@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+# ...but dashboard/dist/ is the hand-written dashboard plugin bundle (source, no
+# build step), not a build artifact — keep it tracked despite the rule above.
+!hermes_inbox_organizer/dashboard/dist/
+.eggs/
+
+# Virtualenvs / tooling caches
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node / Cloudflare (oauth-callback tooling)
+node_modules/
+.wrangler/
+
+# Env / secrets — never commit credentials
+.env
+.env.local
+*.key
+*.pem
+
+# Local state / data
+*.db
+*.db-shm
+*.db-wal
+data/
+.DS_Store
+
+# Agent scratch (oh-my-claudecode)
+.omc/
