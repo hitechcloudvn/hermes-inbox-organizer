@@ -14,14 +14,26 @@ test:
     - python -m py_compile hermes_inbox_organizer/__init__.py
     - python -m pytest -q
 
+# Tạo GitLab Release khi có tag v* / create the GitLab Release on v* tags.
+# Không dùng keyword `release:` — runner 19.6+ yêu cầu glab/release-cli trong
+# image chạy job và embed mô tả markdown vào shell script (backtick bị thực thi).
+# Gọi Releases API trực tiếp qua .ci/create_gitlab_release.py — xem docstring.
+# Not using the `release:` keyword — runner 19.6+ needs glab/release-cli inside
+# the job image and embeds the markdown notes into shell code (backticks get
+# executed). We call the Releases API directly via .ci/create_gitlab_release.py
+# — see that file's docstring.
 release:
   stage: release
-  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  image: python:3.13-alpine
   needs: ["test"]
   rules:
     - if: '$CI_COMMIT_TAG =~ /^v/'
   script:
-    - echo "Publishing release $CI_COMMIT_TAG / Phát hành $CI_COMMIT_TAG"
-  release:
-    tag_name: $CI_COMMIT_TAG
-    description: "hermes-inbox-organizer $CI_COMMIT_TAG — see CHANGELOG / xem CHANGELOG"
+    - python -u .ci/create_gitlab_release.py
+  # Giữ release-response.json đọc được cả khi lỗi / keep release-response.json
+  # readable even if the call fails
+  artifacts:
+    when: always
+    paths:
+      - release-response.json
+    expire_in: 30 days

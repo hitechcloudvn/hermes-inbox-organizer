@@ -35,8 +35,14 @@ jobs:
 
       - name: Kiểm tra tag khớp version / Assert tag matches pyproject version
         if: github.ref_type == 'tag'
+        # Truyền tag qua env RELEASE_TAG thay vì đọc "${GITHUB_REF_NAME}" trực tiếp —
+        # heredoc nháy đơn không nở biến shell, dùng env là cách chắc chắn /
+        # Pass the tag via env RELEASE_TAG instead of embedding "${GITHUB_REF_NAME}"
+        # — a quoted heredoc never expands shell variables; env is the reliable way.
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          tag="${GITHUB_REF_NAME#v}"
+          tag="${RELEASE_TAG#v}"
           pkg="$(python -c "import tomllib, pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")"
           echo "tag=$tag  pyproject=$pkg"
           if [ "$tag" != "$pkg" ]; then
