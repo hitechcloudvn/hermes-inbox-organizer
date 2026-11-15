@@ -1,4 +1,16 @@
-"""The unread-rollup as a Module — the reference extraction (Phase 2).
+"""VI: Bản tổng hợp thư chưa đọc dưới dạng Module — trích xuất tham chiếu (Phase 2).
+
+``inbox_unread_rollup`` là công cụ chỉ-đọc, theo yêu cầu "tôi đã bỏ lỡ gì". Engine
+của nó vẫn nằm trong :mod:`hermes_inbox_organizer.rollup` (không đụng tới, với 42
+bài test); module này chỉ *đóng góp* công cụ đó qua registry thay vì ``register()``
+nối dây inline — chứng minh pattern module trên code thật, đã được kiểm thử, mà
+không thay đổi bất kỳ hành vi nào.
+
+Bộ phân giải tài khoản và vị ngữ lỗi xác thực được TIÊM (chúng phụ thuộc token
+store + runtime của plugin, nằm trong ``__init__``), giữ module tách khỏi phần nối
+dây đó và unit-test được bằng fake.
+
+EN: The unread-rollup as a Module — the reference extraction (Phase 2).
 
 ``inbox_unread_rollup`` is the read-only, on-demand "what did I miss" tool. Its
 engine stays in :mod:`hermes_inbox_organizer.rollup` (untouched, with its 42
@@ -42,8 +54,12 @@ _DESCRIPTION = (
 
 
 class RollupModule(Module):
-    """Contributes the ``inbox_unread_rollup`` tool. Pure tool-contributor — no
-    inbound/sent observation and no triage override."""
+    """VI: Đóng góp công cụ ``inbox_unread_rollup``. Thuần đóng-góp-công-cụ — không
+    quan sát inbound/sent và không ghi đè phân loại.
+
+    EN: Contributes the ``inbox_unread_rollup`` tool. Pure tool-contributor — no
+    inbound/sent observation and no triage override.
+    """
 
     name = "rollup"
 
@@ -59,6 +75,10 @@ class RollupModule(Module):
         self._classify = classify or classify_or_none
 
     def tools(self) -> list[ToolSpec]:
+        """VI: Trả về công cụ ``inbox_unread_rollup`` duy nhất mà module đóng góp.
+
+        EN: Return the single ``inbox_unread_rollup`` tool this module contributes.
+        """
         return [
             ToolSpec(
                 name=INBOX_UNREAD_ROLLUP_SCHEMA["name"],

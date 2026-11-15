@@ -1,4 +1,27 @@
-"""Distil draft→sent deltas into the learned drafting layer (the reinforcement step).
+"""VI: Chưng cất các delta draft→sent thành lớp soạn thảo đã học (bước củng cố).
+
+Hermes soạn nội dung nháp (chúng ta không sở hữu trọng số của nó), nên "củng cố"
+ở đây là **học-trong-ngữ-cảnh từ các chỉnh sửa**: khi chủ sở hữu sửa hoặc viết
+lại một nháp trước khi gửi, chúng ta hỏi LLM cục bộ xem *điều gì đã thay đổi* và
+gộp kết quả đó vào brief soạn thảo — dạng một dòng ``learned_notes`` cho từng
+người gửi và các ``draft_lessons`` toàn cục do/don't — không bao giờ vào các
+trường giọng văn của backfill/agent. Các lần gửi nguyên văn được củng cố rẻ
+(không LLM); một lần không-gửi (``no_reply``) là tín hiệu yếu chỉ gợi một bài
+học mềm.
+
+Logic nằm ở đây; phần nối dây (observer ``on_sent`` + sweep) nằm trong
+``modules/draft_feedback.py`` — cùng cách chia như ``backfill.py`` so với caller
+của backfill. Lời gọi LLM được seamed (``classify_fn``, mặc định
+:func:`llm.classify_json`) để tests tiêm JSON có sẵn không cần mạng.
+
+Bảo mật: cả nháp lẫn thư trả lời đã gửi đều là văn bản dẫn xuất từ email có thể
+bị kẻ tấn công ảnh hưởng. Chúng được bọc trong các hàng rào *ngẫu nhiên* (lược
+đồ ``backfill._fenced``) trước khi đưa cho LLM, và system prompt đánh dấu nội
+dung trong hàng rào là KHÔNG ĐÁNG TIN và chỉ-để-làm-kiểu — một chỉ thị nằm trong
+email không bao giờ được điều khiển trình chưng cất. Không bao giờ ghi log nội
+dung thân thư.
+
+EN: Distil draft→sent deltas into the learned drafting layer (the reinforcement step).
 
 Hermes composes draft bodies (we don't own its weights), so "reinforcement" here is
 **in-context learning-from-edits**: when the owner edits or rewrites a draft before
@@ -77,7 +100,13 @@ _DISTILL_SYSTEM = (
 
 
 def score_similarity(a: str, b: str) -> int:
-    """draft↔sent closeness as an int 0-100 (``difflib`` ratio ×100).
+    """VI: Độ gần draft↔sent dạng số nguyên 0-100 (tỷ lệ ``difflib`` ×100).
+
+    Cả hai đầu vào bị cắt về cùng ``BODY_CAP`` trước khi chấm (G4) để thước đo
+    đối xứng và bị chặn; ``difflib`` là tỷ lệ từ vựng thô (không ngữ nghĩa) —
+    xem cơ chế chống phình M2 trong :func:`classify_outcome`.
+
+    EN: draft↔sent closeness as an int 0-100 (``difflib`` ratio ×100).
 
     Both inputs are truncated to the same ``BODY_CAP`` before scoring (G4) so the
     metric is symmetric and bounded; ``difflib`` is a crude lexical ratio (no
@@ -93,7 +122,17 @@ def score_similarity(a: str, b: str) -> int:
 def classify_outcome(
     draft_body: str, sent_body: str, *, verbatim_t: int, edit_t: int
 ) -> tuple[str, int]:
-    """Bucket a draft↔sent pair → ``(outcome, similarity)``.
+    """VI: Phân loại một cặp draft↔sent → ``(outcome, similarity)``.
+
+    ``>= verbatim_t`` → ``sent_verbatim``; ``>= edit_t`` → ``sent_edited``; ngược
+    lại ``sent_ignored`` (chủ sở hữu viết một thư trả lời mới). Chốt chặn M2: nếu
+    ``sent_body`` đã lọc vượt ``1.5×`` độ dài nháp thì bộ lọc trích dẫn
+    (``_new_text``) nhiều khả năng đã bỏ sót lịch sử được trích dẫn từ một client
+    không phải Gmail — tỷ lệ phình to có thể phân loại sai một chỉnh sửa thật
+    thành ``sent_verbatim`` và loại nó, nên buộc tối thiểu ``sent_edited`` và để
+    LLM phán.
+
+    EN: Bucket a draft↔sent pair → ``(outcome, similarity)``.
 
     ``>= verbatim_t`` → ``sent_verbatim``; ``>= edit_t`` → ``sent_edited``; else
     ``sent_ignored`` (the owner wrote a fresh reply). M2 guard: if the stripped
@@ -258,7 +297,25 @@ def distill_and_apply(
     outcome_row: db.DraftOutcomeRow,
     classify_fn: ClassifyFn = llm.classify_json,
 ) -> None:
-    """Distil one ``draft_outcomes`` row into the learned layer and mark it learned.
+    """VI: Chưng cất một dòng ``draft_outcomes`` vào lớp đã học và đánh dấu nó đã học.
+
+    Phân phối theo ``outcome``:
+
+    * ``sent_verbatim`` → không LLM (nháp được chấp nhận nguyên bản; ``sent_body``
+      đã đóng vai trò ví dụ vàng). Củng cố rẻ, đánh dấu đã học.
+    * ``sent_edited`` — tầm thường (``similarity >= TRIVIAL_T`` + delta ký tự nhỏ)
+      → không LLM, giữ ví dụ, không sửa gì.
+    * ``sent_edited`` / ``sent_ignored`` → chưng cất LLM có hàng rào →
+      ``learned_notes`` + ``draft_lessons`` (ghi theo người gửi bị bỏ qua khi
+      người tương ứng rỗng, G3; các bài học toàn cục vẫn áp dụng).
+    * ``no_reply`` → không sửa giọng văn; chỉ một bài học mềm ngưỡng hóa.
+
+    Khi thành công, ``mark_outcome_learned`` được gọi (idempotent — hàng đợi
+    chưng cất sẽ không chọn lại). Một lỗi LLM/khi phân tích cú pháp trong lúc
+    chưng cất bị bắt và ghi log (không bao giờ thân thư) và hàm trả về MÀ KHÔNG
+    đánh dấu đã học, nên dòng vẫn ``learned=0`` và sweep sẽ thử lại sau.
+
+    EN: Distil one ``draft_outcomes`` row into the learned layer and mark it learned.
 
     Dispatch by ``outcome``:
 

@@ -1,4 +1,15 @@
-"""Standalone setup/status CLI for hermes-inbox-organizer.
+"""VI: CLI thiết lập/trạng thái độc lập cho hermes-inbox-organizer.
+
+Được cài như console script ``hermes-inbox-organizer`` (xem ``[project.scripts]``)
+và chạy được như ``python -m hermes_inbox_organizer``. Nó biến hợp đồng cấu hình
+dựa trên tệp (xem :mod:`.config`) thành một wizard tương tác, để người vận hành
+không phải tự viết JSON config + sinh khóa.
+
+Bảo mật: các giá trị bí mật không bao giờ được in ngược ra; các tệp bí mật được
+ghi với chế độ ``0600``. Các hàm thuần (``write_config``, ``compute_status``,
+``render_status``, ``normalize_topic``) được unit-test mà không cần nhập liệu.
+
+EN: Standalone setup/status CLI for hermes-inbox-organizer.
 
 Installed as the ``hermes-inbox-organizer`` console script (see
 ``[project.scripts]``) and runnable as ``python -m hermes_inbox_organizer``. It
@@ -30,14 +41,17 @@ DEFAULT_LLM_BASE_URL = "https://openrouter.ai/api/v1"  # keep in sync with confi
 DEFAULT_CLASSIFIER_MODEL = "google/gemini-2.5-flash-lite"  # keep in sync with config.py
 ENV_FILE = "inbox.env"
 GOOGLE_BOOTSTRAP = (
-    "https://github.com/hitechcloud-vietnam/hermes-inbox-organizer/blob/main/docs/google-bootstrap.md"
+    "https://github.com/hitechcloudvn/hermes-inbox-organizer/blob/main/docs/google-bootstrap.md"
 )
 
 
 # --- pure helpers (unit-tested) ---------------------------------------------
 
 def normalize_topic(topic: str, project: str) -> str:
-    """A bare topic name becomes ``projects/<project>/topics/<name>``."""
+    """VI: Một tên topic trần được chuyển thành ``projects/<project>/topics/<name>``.
+
+    EN: A bare topic name becomes ``projects/<project>/topics/<name>``.
+    """
     topic = (topic or "").strip()
     if not topic or topic.startswith("projects/"):
         return topic
@@ -69,7 +83,14 @@ def write_config(
     sa_key_text: str,
     env_vars: dict | None = None,
 ) -> list[str]:
-    """Write the config files into ``cfg.config_dir``; return the written paths.
+    """VI: Ghi các tệp cấu hình vào ``cfg.config_dir``; trả về các đường dẫn đã ghi.
+
+    Khóa mã hóa chỉ được tạo khi **chưa có** — không bao giờ tạo lại, vì khóa mới
+    sẽ làm mọi token đã lưu không giải mã được. ``env_vars`` (các thiết lập chỉ
+    dùng env như khóa/endpoint của classifier và ``HERMES_API_URL``) được ghi vào
+    một ``inbox.env`` mà người vận hành nối vào môi trường Hermes.
+
+    EN: Write the config files into ``cfg.config_dir``; return the written paths.
 
     The encryption key is generated only when **absent** — never regenerated, as
     a new key makes every stored token undecryptable. ``env_vars`` (env-only
@@ -99,7 +120,10 @@ def write_config(
 
 
 def compute_status(cfg: Config, env: Mapping[str, str] | None = None) -> dict:
-    """Inspect the on-disk config + environment. Captures NO secret values."""
+    """VI: Kiểm tra cấu hình trên đĩa + môi trường. KHÔNG thu thập giá trị bí mật nào.
+
+    EN: Inspect the on-disk config + environment. Captures NO secret values.
+    """
     env = os.environ if env is None else env
     oauth_present, oauth = _read_json(cfg.oauth_client_file)
     pubsub_present, pubsub = _read_json(cfg.pubsub_config_file)
@@ -185,7 +209,10 @@ def _yn(ok: bool) -> str:
 
 
 def render_status(s: dict) -> str:
-    """Human-readable status report. Contains no secret values."""
+    """VI: Báo cáo trạng thái dễ đọc cho người. Không chứa giá trị bí mật nào.
+
+    EN: Human-readable status report. Contains no secret values.
+    """
     f = s["files"]
     oc, ps = f["oauth_client"], f["pubsub"]
     lines = [
@@ -229,8 +256,12 @@ def cmd_setup(
     secret_reader: Callable[[str], str] = getpass.getpass,
     out: Callable[..., None] = print,
 ) -> int:
-    """Interactive wizard that writes the config files. ``reader``/``secret_reader``
-    are injectable so the flow is testable without a TTY."""
+    """VI: Wizard tương tác ghi các tệp cấu hình. ``reader``/``secret_reader``
+    có thể tiêm vào để luồng kiểm thử được mà không cần TTY.
+
+    EN: Interactive wizard that writes the config files. ``reader``/``secret_reader``
+    are injectable so the flow is testable without a TTY.
+    """
     reset_config()
     cfg = get_config()
     out("hermes-inbox-organizer setup")
@@ -328,12 +359,20 @@ def cmd_setup(
 
 
 def cmd_status(_args: Any = None, *, out: Callable[..., None] = print) -> int:
+    """VI: In báo cáo trạng thái cấu hình hiện tại.
+
+    EN: Print the current configuration status report.
+    """
     reset_config()
     out(render_status(compute_status(get_config())))
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
+    """VI: Điểm vào CLI: phân tích tham số và chạy lệnh con setup/status.
+
+    EN: CLI entry point: parse arguments and run the setup/status subcommand.
+    """
     parser = argparse.ArgumentParser(
         prog="hermes-inbox-organizer",
         description="Set up and inspect the hermes-inbox-organizer plugin config.",

@@ -1,4 +1,11 @@
-"""Classify an email into one of the 8 categories: pre-classifier, then LLM.
+"""VI: Phân loại một email vào một trong 8 danh mục: pre-classifier, rồi đến LLM.
+
+Nội dung email không đáng tin được bọc trong các hàng rào ngẫu nhiên và gắn nhãn
+DATA để prompt-injection trong phần thân không thể điều khiển bộ phân loại (bất
+biến bảo mật). Lời gọi LLM nằm sau một seam (`llm_classify`) để logic được unit-test
+mà không cần lời gọi API thật. Khi lỗi, mặc định an toàn là "FYI".
+
+EN: Classify an email into one of the 8 categories: pre-classifier, then LLM.
 
 Untrusted email content is wrapped in randomized fences and labelled DATA so a
 prompt-injection in the body can't steer the classifier (security invariant).
@@ -92,7 +99,10 @@ def _fenced(parsed: dict) -> str:
 
 
 def classify(parsed: dict, *, llm_classify: LlmClassify = llm.classify_json) -> str:
-    """Return a bare category name for the parsed email."""
+    """VI: Trả về tên danh mục cho email đã được phân tích.
+
+    EN: Return a bare category name for the parsed email.
+    """
     pre = pre_classify(parsed)
     if pre:
         return pre

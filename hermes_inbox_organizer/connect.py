@@ -1,4 +1,14 @@
-"""Connect a Gmail account via Desktop-OAuth loopback, store an encrypted token.
+"""VI: Kết nối tài khoản Gmail qua Desktop-OAuth loopback, lưu token đã mã hóa.
+
+Chạy trên máy CÓ trình duyệt (chiếc laptop). `run_local_server` mở trang đồng ý,
+bắt mã xác thực trên một cổng localhost rồi đổi nó lấy refresh token. Với triển
+khai headless, blob mã hóa thu được sẽ được chuyển về máy chủ sau đó (token-import).
+Các thư viện google được import lười (lazy).
+
+Cách dùng:
+    python -m hermes_inbox_organizer.connect --client-secrets PATH --key HEX --out PATH
+
+EN: Connect a Gmail account via Desktop-OAuth loopback, store an encrypted token.
 
 Runs on a machine WITH a browser (the laptop). `run_local_server` opens the
 consent page, captures the code on a localhost port, and exchanges it for a
@@ -19,6 +29,10 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 
 
 def run_connect(client_secrets: str, key_hex: str, out_path: str) -> str:
+    """VI: Chạy luồng Desktop-OAuth loopback, lưu token đã mã hóa và trả về email đã kết nối.
+
+    EN: Run the Desktop-OAuth loopback flow, save the encrypted token, and return the connected email.
+    """
     from google_auth_oauthlib.flow import InstalledAppFlow
     from googleapiclient.discovery import build
 
@@ -57,6 +71,10 @@ def run_connect(client_secrets: str, key_hex: str, out_path: str) -> str:
 
 
 def main() -> None:
+    """VI: Phân tích tham số dòng lệnh và chạy luồng kết nối Gmail.
+
+    EN: Parse command-line arguments and run the Gmail connect flow.
+    """
     ap = argparse.ArgumentParser()
     ap.add_argument("--client-secrets", required=True)
     ap.add_argument("--key", required=True, help="32-byte AES key as hex")

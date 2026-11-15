@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Thanks for the report. For security issues, **don't use this form** — see
-        [SECURITY.md](https://github.com/hitechcloud-vietnam/hermes-inbox-organizer/blob/main/SECURITY.md).
+        [SECURITY.md](https://github.com/hitechcloudvn/hermes-inbox-organizer/blob/main/SECURITY.md).
         Never paste OAuth tokens, secrets, or full email contents.
   - type: textarea
     id: what-happened

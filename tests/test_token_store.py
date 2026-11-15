@@ -32,4 +32,5 @@ def test_blob_on_disk_is_encrypted_and_0600(tmp_path) -> None:
     save_token(_tok(), key, path)
     raw = open(path).read()
     assert "1//refresh" not in raw  # ciphertext, not plaintext
-    assert oct(os.stat(path).st_mode)[-3:] == "600"
+    if os.name != "nt":  # POSIX perms (0600) don't exist on Windows
+        assert oct(os.stat(path).st_mode)[-3:] == "600"

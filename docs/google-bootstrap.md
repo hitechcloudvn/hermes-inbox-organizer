@@ -1,15 +1,89 @@
 # Google Cloud Setup
 
+**Tiếng Việt** | **English**
+
+---
+
+## 🇻🇳 Tiếng Việt
+
+Những gì plugin cần từ Google Cloud: một project với API **Gmail** + **Pub/Sub**, một OAuth **Web** client, và một Pub/Sub **topic + pull subscription** (cùng một service-account key hẹp mà plugin dùng để xác thực streaming pull).
+
+### 1. Tạo Cloud project
+
+1. [console.cloud.google.com](https://console.cloud.google.com/) → project selector → **New Project**.
+2. Đặt tên (ví dụ `hermes-inbox`), **Create**, rồi chọn project đó.
+
+### 2. Bật API
+
+**APIs & Services → Library** — bật cả hai (cả hai đều bắt buộc; plugin dùng Pub/Sub cho streaming pull của nó):
+
+- **Gmail API** (`gmail.googleapis.com`)
+- **Cloud Pub/Sub API** (`pubsub.googleapis.com`)
+
+### 3. OAuth consent screen
+
+1. **APIs & Services → OAuth consent screen** → **External** → **Create**.
+2. Tên app + email hỗ trợ/developer của bạn.
+3. **Scopes** → thêm:
+   - `https://www.googleapis.com/auth/gmail.modify`
+   - `https://www.googleapis.com/auth/gmail.send`
+   - `https://www.googleapis.com/auth/userinfo.email`
+   - `https://www.googleapis.com/auth/userinfo.profile`
+4. Thêm Gmail của bạn làm **Test User**, rồi **Publish App** (Production audience) để bỏ thời hạn refresh-token 7 ngày — xem [oauth-modes.md](./oauth-modes.md).
+
+### 4. OAuth client (Web)
+
+1. **APIs & Services → Credentials → Create Credentials → OAuth client ID → Web application**.
+2. **Authorized redirect URI**: một trang callback tĩnh hiển thị mã OAuth để bạn dán ngược về Hermes. Trang này không giữ bí mật nào, nên bạn có thể tự host cái trong `oauth-callback/` hoặc dùng lại instance chia sẻ tại `https://inbox-organizer.northbound.run/`. Dù bằng cách nào, OAuth client (client id/secret bên dưới) phải là **của riêng bạn** — thêm redirect URI bạn dùng vào *client này*.
+3. Đặt client id/secret + redirect vào config mount với tên `inbox-oauth-client.json`:
+   ```json
+   { "client_id": "...", "client_secret": "...",
+     "redirect_uri": "https://inbox-organizer.northbound.run/",
+     "owner_matrix_ids": ["@you:your-homeserver"] }
+   ```
+
+### 5. Pub/Sub topic + pull subscription
+
+1. **Pub/Sub → Topics → Create Topic**, ví dụ `gmail-notifications`. Ghi lại tên đầy đủ `projects/<project-id>/topics/gmail-notifications`.
+2. Trên topic đó, **Create Subscription** → delivery type **Pull** (không phải Push — plugin kết nối outbound, không có webhook), ví dụ `gmail-inbox-organizer-pull`.
+3. Ghi lại cả hai vào config mount với tên `inbox-pubsub.json`:
+   ```json
+   { "project": "<project-id>", "topic": "projects/<project-id>/topics/gmail-notifications",
+     "subscription": "gmail-inbox-organizer-pull" }
+   ```
+
+### 6. Cho phép Gmail publish tới topic
+
+`watch()` của Gmail publish qua một tài khoản do Google quản lý. Cấp quyền cho nó trên topic:
+
+- **Pub/Sub → Topics →** topic của bạn **→ Permissions → Add Principal**
+- Principal: `gmail-api-push@system.gserviceaccount.com`
+- Role: **Pub/Sub Publisher**
+
+### 7. Subscriber service-account key (cho plugin)
+
+Plugin xác thực streaming pull bằng key hẹp riêng của nó — **không** dùng domain-wide delegation:
+
+1. **IAM & Admin → Service Accounts → Create**, ví dụ `hermes-inbox-pubsub`.
+2. Cấp cho nó **`roles/pubsub.subscriber`** scope vào subscription (trên **Permissions** của subscription), không phải toàn project.
+3. Tạo một JSON key cho nó và cài vào config mount với tên `inbox-pubsub-sa.json`.
+
+Đó là tất cả phía Google; plugin đọc toàn bộ từ config mount.
+
+---
+
+## 🇬🇧 English
+
 What the plugin needs from Google Cloud: a project with the **Gmail** + **Pub/Sub**
 APIs, an OAuth **Web** client, and a Pub/Sub **topic + pull subscription** (plus a
 narrow service-account key the plugin uses to authenticate the streaming pull).
 
-## 1. Create the Cloud project
+### 1. Create the Cloud project
 
 1. [console.cloud.google.com](https://console.cloud.google.com/) → project selector → **New Project**.
 2. Name it (e.g. `hermes-inbox`), **Create**, and select it.
 
-## 2. Enable APIs
+### 2. Enable APIs
 
 **APIs & Services → Library** — enable both (both are required; the plugin uses
 Pub/Sub for its streaming pull):
@@ -17,7 +91,7 @@ Pub/Sub for its streaming pull):
 - **Gmail API** (`gmail.googleapis.com`)
 - **Cloud Pub/Sub API** (`pubsub.googleapis.com`)
 
-## 3. OAuth consent screen
+### 3. OAuth consent screen
 
 1. **APIs & Services → OAuth consent screen** → **External** → **Create**.
 2. App name + your support/developer email.
@@ -29,7 +103,7 @@ Pub/Sub for its streaming pull):
 4. Add your Gmail as a **Test User**, then **Publish App** (Production audience)
    to remove the 7-day refresh-token expiry — see [oauth-modes.md](./oauth-modes.md).
 
-## 4. OAuth client (Web)
+### 4. OAuth client (Web)
 
 1. **APIs & Services → Credentials → Create Credentials → OAuth client ID → Web application**.
 2. **Authorized redirect URI**: a static callback page that displays the OAuth
@@ -46,7 +120,7 @@ Pub/Sub for its streaming pull):
      "owner_matrix_ids": ["@you:your-homeserver"] }
    ```
 
-## 5. Pub/Sub topic + pull subscription
+### 5. Pub/Sub topic + pull subscription
 
 1. **Pub/Sub → Topics → Create Topic**, e.g. `gmail-notifications`. Note the full
    name `projects/<project-id>/topics/gmail-notifications`.
@@ -58,7 +132,7 @@ Pub/Sub for its streaming pull):
      "subscription": "gmail-inbox-organizer-pull" }
    ```
 
-## 6. Let Gmail publish to the topic
+### 6. Let Gmail publish to the topic
 
 Gmail's `watch()` publishes via a Google-managed account. Grant it on the topic:
 
@@ -66,7 +140,7 @@ Gmail's `watch()` publishes via a Google-managed account. Grant it on the topic:
 - Principal: `gmail-api-push@system.gserviceaccount.com`
 - Role: **Pub/Sub Publisher**
 
-## 7. Subscriber service-account key (for the plugin)
+### 7. Subscriber service-account key (for the plugin)
 
 The plugin authenticates the streaming pull with its own narrow key — **not**
 domain-wide delegation:

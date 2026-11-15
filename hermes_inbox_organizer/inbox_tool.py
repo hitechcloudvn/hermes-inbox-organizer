@@ -1,4 +1,15 @@
-"""The native ``inbox_create_draft`` agent tool.
+"""VI: Agent tool gốc ``inbox_create_draft``.
+
+Đây là nguyên tử ghi ngược mà Hermes gọi *sau* khi đã soạn xong thư trả lời
+bằng ngữ cảnh của riêng nó (vault / trí nhớ Honcho / phụ lục chat). Plugin sở
+hữu "đôi tay" Gmail; agent sở hữu lời văn.
+
+Các handler của tool theo đúng hợp đồng Hermes thật
+(``hermes_cli/plugins.py`` -> ``PluginContext.register_tool``): một callable
+nhận dict ``args`` do LLM cung cấp và trả về một **chuỗi** JSON, không bao giờ
+raise ra ngoài handler.
+
+EN: The native ``inbox_create_draft`` agent tool.
 
 This is the write-back primitive Hermes calls *after* it has composed a reply
 with its own context (vault / Honcho memory / chat transcripts). The plugin
@@ -21,35 +32,64 @@ logger = logging.getLogger(__name__)
 
 
 class GmailDraftWriter(Protocol):
-    """Creates a Gmail draft reply on a thread and returns its draft id.
+    """VI: Tạo một nháp trả lời Gmail trên một chuỗi và trả về draft id của nó.
+
+    Lớp triển khai thật bọc Gmail API (``drafts.create`` với thư trả lời MIME +
+    header idempotency) — "đôi tay" của agent. Cần OAuth thật để chạy, nên các
+    test tiêm một bản giả.
+
+    EN: Creates a Gmail draft reply on a thread and returns its draft id.
 
     The real implementation wraps the Gmail API (``drafts.create`` with a MIME
     reply + an idempotency header) — the agent's "hands." It needs live OAuth to
     exercise, so tests inject a fake.
     """
 
-    def create_draft(self, *, account_id: str, thread_id: str, body: str) -> str: ...
+    def create_draft(self, *, account_id: str, thread_id: str, body: str) -> str:
+        """VI: Tạo nháp trả lời trên chuỗi và trả về draft id.
+
+        EN: Create a reply draft on the thread and return its draft id.
+        """
+        ...
 
 
 class UnconfiguredWriter:
-    """Inert writer used when register() runs without live Gmail config.
+    """VI: Writer vô dụng dùng khi register() chạy mà không có cấu hình Gmail thật.
+
+    Giữ ``register(ctx)`` an toàn khi gọi trong tests/CI: tool được gắn dây,
+    nhưng gọi nó khi chưa cấu hình sẽ thất bại ồn ào thay vì im lặng.
+
+    EN: Inert writer used when register() runs without live Gmail config.
 
     Keeps ``register(ctx)`` safe to call in tests/CI: the tool is wired, but
     invoking it without configuration fails loudly rather than silently.
     """
 
     def create_draft(self, *, account_id: str, thread_id: str, body: str) -> str:
+        """VI: Luôn raise RuntimeError vì Gmail chưa được cấu hình.
+
+        EN: Always raises RuntimeError because Gmail is not configured.
+        """
         raise RuntimeError("Gmail writer not configured")
 
 
 class LoggingDraftWriter:
-    """Diagnostic writer: logs the composed draft instead of touching Gmail.
+    """VI: Writer chẩn đoán: ghi log nháp đã soạn thay vì đụng vào Gmail.
+
+    Cho phép quan sát agent có tạo ra thư trả lời giàu ngữ cảnh và thực sự gọi
+    ``inbox_create_draft`` hay không — không cần nối Gmail OAuth/Pub/Sub.
+
+    EN: Diagnostic writer: logs the composed draft instead of touching Gmail.
 
     Lets us observe whether the agent produces a context-rich reply and actually
     calls ``inbox_create_draft`` — without needing Gmail OAuth/Pub/Sub wired.
     """
 
     def create_draft(self, *, account_id: str, thread_id: str, body: str) -> str:
+        """VI: Ghi log nội dung nháp và trả về id giả "probe-draft".
+
+        EN: Log the draft body and return the placeholder id "probe-draft".
+        """
         logger.info(
             "inbox_create_draft PROBE account=%s thread=%s body=%r",
             account_id,
@@ -101,7 +141,19 @@ def make_inbox_create_draft_handler(
     lookup_draft: LookupDraft | None = None,
     record_outcome: RecordOutcome | None = None,
 ):
-    """Build the tool handler closure over an account->writer resolver.
+    """VI: Dựng closure handler của tool quanh một bộ phân giải account->writer.
+
+    ``record_draft`` ghi lại draft id Gmail đã tạo/cập nhật để sổ của daemon
+    được đóng kín (``draft_requests.gmail_draft_id``); lỗi ghi sổ chỉ được log,
+    không bao giờ raise (hợp đồng tool). ``lookup_draft`` trả về draft id hiện
+    có cho chuỗi để một lần soạn lại CẬP NHẬT nó thay vì tạo bản trùng.
+    ``record_outcome`` là điểm ghi lại của vòng phản hồi nháp: được gọi với
+    ``(account_id, thread_id, body, draft_id)`` ngay sau ``record_draft`` để nội
+    dung nháp được lưu cho việc chấm delta về sau; lỗi cũng chỉ được log và
+    không bao giờ raise. Cả ba mặc định là None (no-op) — production nối chúng
+    vào DB; các call site và test hiện tại không bị ảnh hưởng.
+
+    EN: Build the tool handler closure over an account->writer resolver.
 
     ``record_draft`` persists the created/updated Gmail draft id so the daemon's
     ledger is closed (``draft_requests.gmail_draft_id``); a recorder failure is
@@ -115,6 +167,10 @@ def make_inbox_create_draft_handler(
     """
 
     def handler(args: dict, **_kwargs: Any) -> str:
+        """VI: Xử lý lời gọi inbox_create_draft: tạo/cập nhật nháp Gmail và ghi sổ.
+
+        EN: Handle the inbox_create_draft call: create/update the Gmail draft and record it.
+        """
         a = args or {}
         account_id = a.get("account_id", "")
         thread_id = a.get("thread_id", "")

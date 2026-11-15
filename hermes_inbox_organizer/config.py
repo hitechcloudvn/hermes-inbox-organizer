@@ -1,4 +1,20 @@
-"""Single source of truth for plugin configuration.
+"""VI: Nguồn sự thật duy nhất cho cấu hình của plugin.
+
+Mọi nút ``INBOX_*`` mà plugin đọc được phân giải tại đây, một lần, thay vì rải
+rác ``os.environ.get("INBOX_…", "/opt/data/…")`` (với các giá trị mặc định cứng
+bị lặp lại) khắp các module. Các đường dẫn mặc định dưới hai gốc:
+
+* ``INBOX_CONFIG_DIR`` (mặc định ``/opt/data/config``) — mount cấu hình CHỈ-ĐỌC:
+  các bí mật người vận hành cài đặt (khóa mã hóa, OAuth client, khóa service-account
+  của Pub/Sub).
+* ``INBOX_DATA_DIR`` (mặc định ``/opt/data/inbox-organizer``) — thư mục dữ liệu
+  GHI ĐƯỢC trong volume của Hermes: SQLite DB, các tệp token theo từng tài khoản.
+
+Cả hai đều nằm dưới ``HERMES_HOME`` của Hermes (``/opt/data``), nên mọi thứ tồn
+tại qua các lần khởi động lại / ``docker compose up``. Được phân giải một lần và
+cache lại; gọi ``reset_config()`` trong các test monkeypatch môi trường.
+
+EN: Single source of truth for plugin configuration.
 
 Every ``INBOX_*`` knob the plugin reads is resolved here, once, instead of
 scattering ``os.environ.get("INBOX_…", "/opt/data/…")`` (with duplicated
@@ -24,6 +40,11 @@ from functools import lru_cache
 
 @dataclass(frozen=True)
 class Config:
+    """VI: Cấu hình bất biến của plugin, được phân giải từ các biến môi trường ``INBOX_*``.
+
+    EN: Immutable plugin configuration resolved from the ``INBOX_*`` environment variables.
+    """
+
     # Roots
     config_dir: str
     data_dir: str
@@ -78,7 +99,10 @@ class Config:
     draft_feedback_edit_threshold: int  # INBOX_DRAFT_FEEDBACK_EDIT_THRESHOLD (similarity >= N → sent_edited; else sent_ignored; default 45)
 
     def token_path(self, safe_email: str) -> str:
-        """Path to an account's encrypted token file (``accounts/<email>.json``)."""
+        """VI: Đường dẫn đến tệp token đã mã hóa của một tài khoản (``accounts/<email>.json``).
+
+        EN: Path to an account's encrypted token file (``accounts/<email>.json``).
+        """
         return os.path.join(self.token_dir, f"{safe_email}.json")
 
 
@@ -103,6 +127,10 @@ def _env_int(name: str, default: int) -> int:
 
 @lru_cache(maxsize=1)
 def get_config() -> Config:
+    """VI: Trả về ``Config`` đã cache, được phân giải một lần từ môi trường.
+
+    EN: Return the cached ``Config``, resolved once from the environment.
+    """
     config_dir = os.environ.get("INBOX_CONFIG_DIR", "/opt/data/config")
     data_dir = os.environ.get("INBOX_DATA_DIR", "/opt/data/inbox-organizer")
 
@@ -159,5 +187,8 @@ def get_config() -> Config:
 
 
 def reset_config() -> None:
-    """Drop the cached Config so the next get_config() re-reads the environment."""
+    """VI: Xóa Config đã cache để lần get_config() tiếp theo đọc lại môi trường.
+
+    EN: Drop the cached Config so the next get_config() re-reads the environment.
+    """
     get_config.cache_clear()

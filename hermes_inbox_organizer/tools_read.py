@@ -1,4 +1,11 @@
-"""Read tools the agent calls to inspect the inbox before drafting.
+"""VI: Các công cụ đọc mà agent gọi để kiểm tra hộp thư trước khi soạn thảo.
+
+Mỗi handler phân giải một ``GmailReader`` cho tài khoản (seam), định dạng kết
+quả thành chuỗi JSON và không bao giờ ném lỗi — theo hợp đồng công cụ Hermes.
+Cho đến khi OAuth/connect hoàn tất, bộ phân giải trả về ``None`` và các công cụ
+trả về thông báo rõ ràng "account not connected" thay vì thất bại.
+
+EN: Read tools the agent calls to inspect the inbox before drafting.
 
 Each handler resolves a ``GmailReader`` for the account (seam), formats the
 result as a JSON string, and never raises — per the Hermes tool contract.
@@ -79,6 +86,10 @@ INBOX_GET_EMAIL_SCHEMA: dict[str, Any] = {
 
 
 def make_inbox_get_thread_handler(resolve_reader: ResolveReader):
+    """VI: Trả về handler đọc một chuỗi Gmail (mọi thư, headers + plaintext) để soạn phản hồi.
+
+    EN: Return the handler that reads a Gmail thread (all messages, headers + plaintext) for drafting a reply.
+    """
     def handler(args: dict, **_kwargs: Any) -> str:
         a = args or {}
         account_id, thread_id = a.get("account_id"), a.get("thread_id")
@@ -102,7 +113,14 @@ def make_inbox_get_thread_handler(resolve_reader: ResolveReader):
 def make_inbox_list_emails_handler(
     resolve_reader: ResolveReader, list_accounts: Callable[[], list[str]]
 ):
-    """Search Gmail across one account (account_id) or ALL connected accounts (default).
+    """VI: Tìm kiếm Gmail trong một tài khoản (account_id) hoặc TẤT CẢ tài khoản đã kết nối (mặc định).
+
+    Lấy các kết quả khớp ở dạng metadata (headers + snippet, không có body) để
+    tìm kiếm đa hộp thư vẫn nhẹ; mỗi kết quả được gắn thẻ ``account`` của nó.
+    Lỗi theo từng tài khoản được cô lập vào ``errors`` và không bao giờ hủy toàn
+    bộ lượt tìm kiếm.
+
+    EN: Search Gmail across one account (account_id) or ALL connected accounts (default).
 
     Fetches matches in metadata form (headers + snippet, no body) so a multi-inbox
     search stays light; each result is tagged with its ``account``. Per-account
@@ -156,6 +174,10 @@ def make_inbox_list_emails_handler(
 
 
 def make_inbox_get_email_handler(resolve_reader: ResolveReader):
+    """VI: Trả về handler đọc một thư Gmail đơn lẻ (headers + thân plaintext).
+
+    EN: Return the handler that reads a single Gmail message (headers + plaintext body).
+    """
     def handler(args: dict, **_kwargs: Any) -> str:
         a = args or {}
         account_id, message_id = a.get("account_id"), a.get("message_id")

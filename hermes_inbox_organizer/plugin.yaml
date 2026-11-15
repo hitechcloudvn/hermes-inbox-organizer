@@ -1,7 +1,7 @@
 name: inbox_organizer
-version: 0.1.0
-description: "Autonomous Gmail triage + Hermes-drafted replies, as an in-process Hermes plugin."
-author: Matthew Hall
+version: 0.2.1
+description: "Autonomous Gmail triage + Hermes-drafted replies, as an in-process Hermes plugin. / Phân loại Gmail tự động + bản nháp trả lời do Hermes soạn, dạng plugin chạy trong tiến trình."
+author: "Nguyễn Thanh An <thanhan92f1@gmail.com> (HiTechCloud.VN)"
 license: MIT
 kind: standalone
 

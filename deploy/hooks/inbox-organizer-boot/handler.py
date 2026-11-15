@@ -1,4 +1,23 @@
-"""gateway:startup hook — start the inbox-organizer daemon at boot.
+"""VI: Hook gateway:startup — khởi động daemon inbox-organizer khi boot.
+
+Vì sao cái này tồn tại
+----------------------
+Hermes nạp các plugin entry-point ``hermes_agent.plugins`` một cách lười biếng,
+khi AIAgent được tạo lần đầu (không phải lúc gateway boot). Plugin inbox-organizer
+khởi động daemon phân loại Pub/Sub liên tục của nó bên trong ``register(ctx)``,
+nên sau khi restart hoặc ``docker compose up`` daemon vẫn ngủ cho tới khi ai đó
+tương tác với Hermes tiếp theo — phân loại tự động bị tạm dừng trong lúc đó.
+
+Hook này bắn trên ``gateway:startup`` và gọi ``discover_plugins()``, thứ chạy
+``register()`` của mọi plugin đã bật (và do đó khởi động daemon) ngay lập tức.
+``discover_plugins()`` là idempotent (nó dùng singleton PluginManager toàn cục),
+nên lần nạp theo-agent sau đó là no-op và các tools/hooks vẫn lan tới các agent
+y như trước.
+
+Lỗi bị nuốt + ghi log (trình chạy hook của gateway đã cô lập các lỗi hook) nên
+một vấn đề ở đây không bao giờ có thể chặn gateway boot.
+
+EN: gateway:startup hook — start the inbox-organizer daemon at boot.
 
 Why this exists
 ---------------
@@ -22,6 +41,10 @@ from __future__ import annotations
 
 
 async def handle(event_type, context):  # Hermes hook signature: (event_type, context)
+    """VI: Xử lý sự kiện gateway:startup — nạp các plugin entry-point để daemon hộp thư chạy ngay khi boot.
+
+    EN: Handle the gateway:startup event — load entry-point plugins so the inbox daemon starts at boot.
+    """
     tag = "[inbox-organizer-boot]"
     try:
         from hermes_cli.plugins import discover_plugins

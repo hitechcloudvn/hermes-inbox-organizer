@@ -1,4 +1,57 @@
-"""Proactive outbound push to the owner — the ``Notifier`` seam.
+"""VI: Đẩy chủ động ra ngoài tới chủ sở hữu — seam ``Notifier``.
+
+Các module (mã 2FA, cập nhật vận chuyển) cần nhắn cho chủ sở hữu *trực tiếp* —
+MÀ KHÔNG kích hoạt một lượt thảo bản nháp kéo dài hàng phút (đó là việc
+``draft_trigger`` làm, và nó không phải công cụ phù hợp cho một câu "mã của bạn
+là 123456"). Gateway của Hermes đã sở hữu một nguyên mẫu gửi chủ động (nguyên
+mẫu mà đầu ra cron-job và thông báo khởi động gateway dùng):
+``DeliveryRouter.deliver``.
+
+Ta chạm tới nó qua CÙNG ``GatewayRunner`` đã bắt được mà trình kích hoạt bản nháp
+dùng: Hermes đưa runner cho plugin dưới dạng kwarg ``gateway=`` của hook
+``pre_gateway_dispatch`` (không bao giờ tại thời điểm đăng ký), và
+``_GatewayCapture`` trong ``__init__`` nắm nó ở lượt vào đầu tiên. Runner lộ
+``delivery_router`` + ``config`` và tự giữ event loop của nó, nên từ thread
+daemon của ta ta lên lịch coroutine bất đồng bộ ``deliver`` lên loop đó bằng
+``run_coroutine_threadsafe`` — tức chạy ``adapter.send`` trên loop mà network
+client của nó được gắn vào.
+
+ĐỐI CHIẾU với ``NousResearch/hermes-agent`` @ main (cloned 2026-06-04; số dòng
+có thể trôi, hình dạng mới là điều quan trọng):
+
+  * ``gateway/run.py:1863``  ``self.delivery_router = DeliveryRouter(self.config)``
+  * ``gateway/run.py:4249``  ``self._gateway_loop = asyncio.get_running_loop()``
+  * ``gateway/run.py:4864``  ``home = self.config.get_home_channel(platform)`` (mẫu "gửi về home" chuẩn tắc)
+  * ``gateway/run.py:7407``  ``_invoke_hook("pre_gateway_dispatch", …, gateway=self, …)``
+  * ``gateway/delivery.py:195``  ``async def deliver(content, targets, …) -> dict``
+  * ``gateway/delivery.py:94``   ``DeliveryTarget(platform, chat_id, thread_id, …)``
+  * ``gateway/config.py:202``   ``HomeChannel(platform, chat_id, name, thread_id)``
+  * ``gateway/config.py:556``   ``GatewayConfig.get_home_channel(platform) -> HomeChannel | None``
+  * ``gateway/config.py:115``   ``Platform.MATRIX = "matrix"``
+
+Phân giải điểm đến (điều spike Phase-0 chốt lại):
+
+1. Điểm đến của lượt gửi là một **chat_id (PHÒNG chat)**, KHÔNG phải ``user_id``
+   của người gửi. MẶC ĐỊNH ta dùng lại **home channel** của Hermes — cuộc trò
+   chuyện mà chủ sở hữu chỉ định bằng lệnh gốc ``/sethome``, phân giải qua
+   ``gateway.config.get_home_channel(platform)`` (cùng điểm đến mà Hermes dùng
+   cho thông báo khởi động/cron của nó). Vậy một khi ``/sethome`` đã chạy, không
+   cần cấu hình inbox thêm. Nền tảng là nền tảng mà chủ sở hữu trò chuyện với
+   Hermes (``source`` của phiên đã bắt được), dự phòng ``default_platform``
+   ("matrix") trước khi có lượt nào được bắt.
+2. ``INBOX_NOTIFY_TARGET`` là ghi đè TÙY CHỌN (mã phòng, ví dụ ``!abcd:server``
+   — hoặc ``telegram:123`` cho nền tảng khác), hữu ích khi kiểm thử hoặc gửi tới
+   nơi khác ngoài home.
+3. Mã phòng/bí danh của Matrix chứa ``:`` (``!opaque:homeserver``), TRÙNG với
+   định dạng ``platform:chat_id:thread_id`` của ``DeliveryTarget.parse`` — nên
+   đường ghi đè dựng đích trực tiếp cho Matrix.
+
+Mọi thứ live đều nằm sau các seam (``get_gateway``, ``get_source``,
+``resolve_target``, ``resolve_home``, ``run_on_loop``) để seam — và các module
+dùng nó — được unit-test không cần Hermes, tương tự ``FakeDispatcher``/
+``NoopPoster`` của ``draft_trigger``.
+
+EN: Proactive outbound push to the owner — the ``Notifier`` seam.
 
 Modules (2FA codes, shipping updates) need to message the owner *directly* —
 WITHOUT inducing a multi-minute agent draft turn (that's what ``draft_trigger``
@@ -68,27 +121,50 @@ DEFAULT_PLATFORM = "matrix"
 
 
 class Notifier(Protocol):
-    """Push one plain-text message to the owner. Returns True on delivery.
+    """VI: Đẩy một thông điệp văn bản thuần tới chủ sở hữu. Trả về True khi gửi thành công.
+
+    ``urgent`` được dành cho chính sách lỗi theo từng lớp thông báo (2FA =
+    best-effort + thử lại ngắn rồi bỏ; vận chuyển = retry-via-state) được thêm
+    cùng các module; hiện tại nó chỉ mang tính tham khảo và không bao giờ raise
+    từ ``send``.
+
+    EN: Push one plain-text message to the owner. Returns True on delivery.
 
     ``urgent`` is reserved for the per-notification-class failure policy (2FA =
     best-effort + short retry then drop; shipping = retry-via-state) added with
     the modules; today it is informational and never raises out of ``send``.
     """
 
-    def send(self, text: str, *, urgent: bool = False) -> bool: ...
+    def send(self, text: str, *, urgent: bool = False) -> bool:
+        """VI: Gửi một thông điệp văn bản thuần tới chủ sở hữu.
+
+        EN: Send one plain-text message to the owner.
+        """
+        ...
 
 
 class FakeNotifier:
-    """Records sends instead of touching Hermes (tests / unconfigured)."""
+    """VI: Ghi lại các lần gửi thay vì chạm vào Hermes (tests / chưa cấu hình).
+
+    EN: Records sends instead of touching Hermes (tests / unconfigured).
+    """
 
     def __init__(self) -> None:
         self.sent: list[dict[str, Any]] = []
 
     def send(self, text: str, *, urgent: bool = False) -> bool:
+        """VI: Ghi lại tin nhắn và luôn trả về True.
+
+        EN: Record the message and always return True.
+        """
         self.sent.append({"text": text, "urgent": urgent})
         return True
 
     def send_with_detail(self, text: str) -> tuple[bool, dict]:
+        """VI: Ghi lại tin nhắn và trả về (True, chi tiết giả lập).
+
+        EN: Record the message and return (True, fake detail).
+        """
         self.sent.append({"text": text, "urgent": False})
         return True, {"fake": True}
 
@@ -198,7 +274,22 @@ def _redact(detail: dict) -> dict:
 
 
 class DeliveryNotifier:
-    """Push to the owner via the captured ``GatewayRunner``'s ``DeliveryRouter``.
+    """VI: Đẩy tới chủ sở hữu qua ``DeliveryRouter`` của ``GatewayRunner`` đã bắt được.
+
+    Điểm đến = ``target`` tường minh (``INBOX_NOTIFY_TARGET``) nếu được đặt,
+    ngược lại dùng home channel của Hermes (``/sethome``).
+    ``get_gateway``/``get_source`` là các getter lazy dùng chung với
+    ``_GatewayCapture`` của trình điều phối bản nháp (được điền ở
+    ``pre_gateway_dispatch`` đầu tiên). ``resolve_target``/``resolve_home``/
+    ``run_on_loop`` là các seam để toàn bộ đường đi được unit-test không cần
+    Hermes.
+
+    ``send`` KHÔNG BAO GIỜ raise (hợp đồng Notifier) — nó ghi log và trả về False
+    khi gateway chưa được bắt (B2: một lần đẩy lúc khởi động trước khi có lượt nào
+    của chủ sở hữu), khi không phân giải được điểm đến (không ``/sethome`` và không
+    có ghi đè), hoặc khi lượt gửi lỗi/báo thất bại.
+
+    EN: Push to the owner via the captured ``GatewayRunner``'s ``DeliveryRouter``.
 
     Destination = the explicit ``target`` (``INBOX_NOTIFY_TARGET``) if set, else
     Hermes's home channel (``/sethome``). ``get_gateway``/``get_source`` are the
@@ -234,13 +325,25 @@ class DeliveryNotifier:
         self._run_on_loop = run_on_loop
 
     def send(self, text: str, *, urgent: bool = False) -> bool:
+        """VI: Đẩy một tin nhắn; không bao giờ raise, trả về False khi thất bại.
+
+        EN: Push one message; never raises, returns False on failure.
+        """
         ok, detail = self.send_with_detail(text)
         if not ok:
             logger.warning("inbox notifier: push not delivered: %s", _redact(detail))
         return ok
 
     def send_with_detail(self, text: str) -> tuple[bool, dict]:
-        """Like :meth:`send` but returns ``(ok, detail)`` for diagnostics.
+        """VI: Như :meth:`send` nhưng trả về ``(ok, detail)`` để chẩn đoán.
+
+        ``detail`` ghi lại mọi điểm quyết định — gateway đã được bắt hay chưa,
+        loop nào chạy coroutine, đích đã phân giải, và kết quả ``deliver()`` thô
+        (hoặc exception + traceback đã cắt). KHÔNG BAO GIỜ raise (hợp đồng
+        Notifier). Được dùng bởi probe ``/inboxnotifyprobe`` để một thất bại hiện
+        *lý do* ngay trong chat (runtime logger không nằm trên docker stdout).
+
+        EN: Like :meth:`send` but returns ``(ok, detail)`` for diagnostics.
 
         ``detail`` records every decision point — whether the gateway was
         captured, which loop ran the coroutine, the resolved target, and the raw

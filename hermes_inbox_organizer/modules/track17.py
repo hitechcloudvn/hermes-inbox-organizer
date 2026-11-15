@@ -1,4 +1,24 @@
-"""17track API client + normalized package stages (Phase 4).
+"""VI: Client API 17track + các giai đoạn bưu kiện chuẩn hóa (Phase 4).
+
+17track là một bộ tổng hợp theo dõi vận chuyển phổ quát. Chúng ta POLL nó (không
+webhook — không cổng vào công khai, cùng ràng buộc khiến Gmail dùng Pub/Sub pull).
+Hai lệnh: ``register`` một mã vận đơn (tốn 1 quota khi thành công; miễn phí =
+100/tháng), rồi ``gettrackinfo`` để đọc trạng thái mới nhất.
+
+Client trả về một cái nhìn CHUẨN HÓA nên module vận chuyển không bao giờ phụ thuộc
+vào JSON chính xác của 17track: ``register`` -> :class:`RegisterResult`;
+``get_statuses`` -> ``list[TrackStatus]``. Các giai đoạn là chuỗi
+``latest_status.status`` của 17track v2.2. Nằm sau một seam
+(:class:`FakeTrack17Client`) nên module được unit-test không cần mạng.
+
+API (v2.2; base xác minh 2026-06-01): ``https://api.17track.net/track/v2.2/``,
+header ``17token: <key>``, POST một mảng JSON của ``{"number","carrier"?}``,
+<=40 số/lệnh, 3 req/s. Client live dùng ``urllib`` stdlib (không thêm dep) và
+chưa được kiểm thử trong unit test (giống client Gmail live). Đường dẫn trường
+``track_info`` chính xác + các mã lỗi quota được đánh dấu để xác minh live trong
+lần poll đầu tiên.
+
+EN: 17track API client + normalized package stages (Phase 4).
 
 17track is a universal carrier-tracking aggregator. We POLL it (no webhooks — no
 public ingress, the same constraint that makes Gmail use Pub/Sub pull). Two
@@ -48,6 +68,11 @@ TERMINAL_STAGES = frozenset({STAGE_DELIVERED, STAGE_EXCEPTION, STAGE_EXPIRED})
 
 @dataclass(frozen=True)
 class TrackStatus:
+    """VI: Trạng thái theo dõi đã chuẩn hóa cho một mã vận đơn.
+
+    EN: Normalized tracking status for one tracking number.
+    """
+
     number: str
     stage: str | None  # a normalized stage, or None when not yet known / not found
     sub_status: str = ""
@@ -56,18 +81,44 @@ class TrackStatus:
 
 @dataclass(frozen=True)
 class RegisterResult:
+    """VI: Kết quả đăng ký mã vận đơn với 17track (chấp nhận / từ chối / hết quota).
+
+    EN: Result of registering tracking numbers with 17track (accepted / rejected / quota exhausted).
+    """
+
     accepted: list = field(default_factory=list)  # tracking numbers 17track accepted
     rejected: dict = field(default_factory=dict)  # number -> reason
     quota_exhausted: bool = False
 
 
 class Track17Client(Protocol):
-    def register(self, numbers: list) -> RegisterResult: ...
-    def get_statuses(self, numbers: list) -> list: ...
+    """VI: Giao diện client 17track mà module vận chuyển phụ thuộc vào.
+
+    EN: The 17track client interface the shipping module depends on.
+    """
+
+    def register(self, numbers: list) -> RegisterResult:
+        """VI: Đăng ký (các) mã vận đơn để theo dõi.
+
+        EN: Register tracking numbers for tracking.
+        """
+        ...
+
+    def get_statuses(self, numbers: list) -> list:
+        """VI: Lấy trạng thái theo dõi mới nhất cho (các) mã vận đơn.
+
+        EN: Fetch the latest tracking statuses for tracking numbers.
+        """
+        ...
 
 
 class FakeTrack17Client:
-    """Scripted client for tests — no network.
+    """VI: Client có kịch bản cho test — không dùng mạng.
+
+    ``statuses`` ánh xạ số -> :class:`TrackStatus` (hoặc một chuỗi giai đoạn trần).
+    ``register`` chấp nhận mọi thứ không nằm trong ``reject`` và ghi lại các lệnh gọi.
+
+    EN: Scripted client for tests — no network.
 
     ``statuses`` maps number -> :class:`TrackStatus` (or a bare stage string).
     ``register`` accepts everything not in ``reject`` and records its calls.
@@ -81,6 +132,10 @@ class FakeTrack17Client:
         self.status_calls: list = []
 
     def register(self, numbers: list) -> RegisterResult:
+        """VI: Mô phỏng đăng ký: chấp nhận mọi số không nằm trong ``reject``.
+
+        EN: Simulate registration: accept everything not in ``reject``.
+        """
         if self._quota:
             return RegisterResult(quota_exhausted=True)
         accepted, rejected = [], {}
@@ -93,9 +148,17 @@ class FakeTrack17Client:
         return RegisterResult(accepted=accepted, rejected=rejected)
 
     def set_status(self, number, stage, sub_status="", carrier=None) -> None:
+        """VI: Ghi trạng thái giả cho một mã vận đơn trong kịch bản test.
+
+        EN: Record a scripted status for one tracking number.
+        """
         self._statuses[number] = TrackStatus(number, stage, sub_status, carrier)
 
     def get_statuses(self, numbers: list) -> list:
+        """VI: Trả về trạng thái đã kịch bản cho các mã vận đơn được truyền vào.
+
+        EN: Return the scripted statuses for the given tracking numbers.
+        """
         self.status_calls.append(list(numbers))
         out = []
         for n in numbers:
@@ -110,7 +173,10 @@ class FakeTrack17Client:
 
 
 class HttpTrack17Client:
-    """Live client over the 17track v2.2 HTTP API (stdlib urllib). Not unit-tested."""
+    """VI: Client live trên HTTP API 17track v2.2 (urllib stdlib). Chưa được unit-test.
+
+    EN: Live client over the 17track v2.2 HTTP API (stdlib urllib). Not unit-tested.
+    """
 
     def __init__(self, api_key: str, *, base: str = _BASE, timeout: float = 30.0) -> None:
         self._key = api_key
@@ -129,6 +195,10 @@ class HttpTrack17Client:
             return json.loads(resp.read().decode() or "{}")
 
     def register(self, numbers: list) -> RegisterResult:
+        """VI: Đăng ký mã vận đơn với 17track qua endpoint register (tốn quota khi thành công).
+
+        EN: Register tracking numbers with 17track via the register endpoint (costs quota on success).
+        """
         if not numbers:
             return RegisterResult()
         resp = self._post("register", [{"number": n} for n in numbers[:MAX_PER_CALL]])
@@ -147,6 +217,10 @@ class HttpTrack17Client:
         return RegisterResult(accepted=accepted, rejected=rejected, quota_exhausted=quota)
 
     def get_statuses(self, numbers: list) -> list:
+        """VI: Đọc trạng thái theo dõi mới nhất từ 17track qua endpoint gettrackinfo.
+
+        EN: Read the latest tracking statuses from 17track via the gettrackinfo endpoint.
+        """
         if not numbers:
             return []
         resp = self._post("gettrackinfo", [{"number": n} for n in numbers[:MAX_PER_CALL]])

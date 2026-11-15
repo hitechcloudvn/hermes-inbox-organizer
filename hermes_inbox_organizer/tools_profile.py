@@ -1,4 +1,24 @@
-"""Agent + owner tools for sender profiles and the backfill.
+"""VI: Công cụ agent và chủ sở hữu cho hồ sơ người gửi và backfill.
+
+* ``inbox_get_sender_profile`` / ``inbox_save_sender_profile`` — agent đọc +
+  tinh chỉnh hồ sơ giọng viết theo từng người liên lạc khi soạn thảo. KHÔNG bị
+  chặn theo chủ sở hữu, nên chúng hoạt động trong lượt wake/draft (vốn không mang
+  người gửi Matrix).
+* ``inbox_backfill_profiles`` — bị chặn theo chủ sở hữu (được thêm vào cổng
+  connect-tool trong ``__init__``); tạo hồ sơ từ thư đã gửi. Tốn kém (LLM cho
+  nhiều người gửi), nên do chủ sở hữu khởi xướng, không phải thứ mà một lượt draft
+  có thể kích hoạt.
+
+Các handler mở một ``db.connect`` ngắn hạn, trả về chuỗi JSON và không bao giờ
+ném lỗi (hợp đồng công cụ Hermes).
+
+TRUST: get/save cố ý không bị chặn để hoạt động trong các lượt wake/draft (vốn
+không mang người gửi Matrix). Điều này giả định triển khai một-chủ-sở-hữu (xem
+MEMORY) nơi người gọi duy nhất là agent của chính chủ sở hữu. Nếu phòng đa tenant
+từng nằm trong phạm vi, hãy chặn các ghi ``inbox_save_sender_profile``; brief đã
+đóng khung các ghi chú đã lưu như một lớp phòng vệ chiều sâu.
+
+EN: Agent + owner tools for sender profiles and the backfill.
 
 * ``inbox_get_sender_profile`` / ``inbox_save_sender_profile`` — the agent reads +
   refines the per-correspondent voice profile while drafting. NOT owner-gated, so
@@ -89,6 +109,10 @@ def _err(message: str) -> str:
 
 
 def make_get_sender_profile_handler():
+    """VI: Trả về handler đọc hồ sơ giọng viết của một người liên lạc từ DB.
+
+    EN: Return the handler that reads a correspondent's voice profile from the DB.
+    """
     def handler(args: dict, **_kw: Any) -> str:
         a = args or {}
         account_id = a.get("account_id", "")
@@ -111,6 +135,10 @@ def make_get_sender_profile_handler():
 
 
 def make_save_sender_profile_handler():
+    """VI: Trả về handler lưu hoặc tinh chỉnh hồ sơ giọng viết của một người liên lạc.
+
+    EN: Return the handler that saves or refines a correspondent's voice profile.
+    """
     def handler(args: dict, **_kw: Any) -> str:
         a = args or {}
         account_id = a.get("account_id", "")
@@ -140,7 +168,10 @@ def make_save_sender_profile_handler():
 
 
 def make_backfill_profiles_handler(run_backfill: Callable[[Any, bool], dict]):
-    """``run_backfill(account_id: str | None, force: bool) -> dict`` is wired in __init__."""
+    """VI: ``run_backfill(account_id: str | None, force: bool) -> dict`` được nối trong __init__.
+
+    EN: ``run_backfill(account_id: str | None, force: bool) -> dict`` is wired in __init__.
+    """
 
     def handler(args: dict, **_kw: Any) -> str:
         a = args or {}

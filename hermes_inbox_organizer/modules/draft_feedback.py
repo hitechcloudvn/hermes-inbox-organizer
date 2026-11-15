@@ -1,4 +1,31 @@
-"""Draft-feedback module — pair draft→sent, distil the correction, sweep no-replies.
+"""VI: Module draft-feedback — ghép draft→sent, chắt lọc hiệu chỉnh, quét no-replies.
+
+Phần nối dây của vòng lặp củng cố (logic chắt lọc nằm trong
+:mod:`hermes_inbox_organizer.draft_learn`). Ba hook:
+
+* ``on_sent`` (observer, offloaded): khi chủ sở hữu gửi trên một chuỗi mà chúng
+  ta đã soạn thảo, ghép bản nháp của chúng ta với nội dung thực sự được gửi,
+  chấm điểm + phân nhóm (``draft_learn.classify_outcome``), lưu kết quả và chắt
+  lọc nó. Khi chủ sở hữu gửi trên một chuỗi mà chúng ta KHÔNG soạn thảo, tùy
+  chọn thu thập thư trả lời làm ví dụ vàng cho người liên lạc đó
+  (``capture_all_sent``).
+* ``periodic`` (job hẹn giờ): một lượt quét (1) đánh dấu các chuỗi đã soạn thảo
+  ``no_reply`` — nhưng chỉ khi hộp thư được chứng minh là hoạt động xuyên suốt
+  cửa sổ (M1), nên sự cố token không bao giờ đánh dấu sai; (2) thử lại bất kỳ
+  lần chắt lọc nào đã thất bại; (3) cắt bớt các bài học + kết quả đã học cũ để
+  chặn tăng trưởng.
+* ``tools`` (theo yêu cầu): chủ sở hữu xem/hoàn tác — trạng thái chỉ-đọc cộng với
+  ``forget_lesson`` / ``clear_learned_notes`` (các cơ chế hoàn tác có thể kiểm
+  toán; hai phép đột biến được plugin wiring thêm vào cổng chủ sở hữu).
+
+Bộ phân giải tài khoản + vị ngữ kết nối lại được TIÊM (chúng phụ thuộc token
+store + runtime của plugin trong ``__init__``) nên cổng liveness M1 có thể kiểm
+thử bằng fake. ``on_sent``/lượt quét/các handler công cụ mỗi cái tự mở một
+``db.connect()`` ngắn hạn (worker thread — không bao giờ kết nối của drainer) và
+không bao giờ ném lỗi (hợp đồng observer + công cụ). Thân thư không bao giờ được
+ghi log; bước chắt lọc đóng rào lại chúng.
+
+EN: Draft-feedback module — pair draft→sent, distil the correction, sweep no-replies.
 
 The wiring half of the reinforcement loop (the distillation logic lives in
 :mod:`hermes_inbox_organizer.draft_learn`). Three hooks:
@@ -51,7 +78,10 @@ def _now_ms() -> int:
 
 
 class DraftFeedbackModule(Module):
-    """Learn from draft→sent deltas; sweep no-replies. Gated by ``draft_feedback_enabled``."""
+    """VI: Học từ chênh lệch draft→sent; quét no-replies. Được chặn bởi ``draft_feedback_enabled``.
+
+    EN: Learn from draft→sent deltas; sweep no-replies. Gated by ``draft_feedback_enabled``.
+    """
 
     name = "draft_feedback"
 
@@ -72,11 +102,20 @@ class DraftFeedbackModule(Module):
 
     @property
     def enabled(self) -> bool:
+        """VI: Trả về True khi tính năng draft-feedback được bật trong cấu hình.
+
+        EN: Return True when the draft-feedback feature is enabled in config.
+        """
         return bool(self._cfg.draft_feedback_enabled)
 
     # -- pair + distil (observer, offloaded) ------------------------------------
     def on_sent(self, event: SentEvent) -> None:
-        """Pair a SENT message against our draft (or capture it as a gold example).
+        """VI: Ghép một thư ĐÃ GỬI với bản nháp của chúng ta (hoặc thu thập làm ví dụ vàng).
+
+        Không bao giờ ném lỗi — registry offload cái này và cô lập lỗi, nhưng chúng
+        ta cũng phòng vệ ở đây nên một sự kiện sai định dạng không thể thoát ra worker.
+
+        EN: Pair a SENT message against our draft (or capture it as a gold example).
 
         Never raises — the registry offloads this and isolates failures, but we also
         guard here so a malformed event can't escape the worker.
@@ -174,6 +213,10 @@ class DraftFeedbackModule(Module):
 
     # -- sweep (periodic) -------------------------------------------------------
     def periodic(self) -> list:
+        """VI: Trả về job quét định kỳ của module (một job duy nhất).
+
+        EN: Return the module's periodic sweep job (a single job).
+        """
         return [
             PeriodicJob(
                 name="draft-feedback-sweep",
@@ -183,7 +226,10 @@ class DraftFeedbackModule(Module):
         ]
 
     def sweep_once(self) -> None:
-        """One bounded pass: liveness-gated no_reply marking, distill retry, prune."""
+        """VI: Một lượt có giới hạn: đánh dấu no_reply có cổng liveness, thử lại chắt lọc, cắt bớt.
+
+        EN: One bounded pass: liveness-gated no_reply marking, distill retry, prune.
+        """
         try:
             with contextlib.closing(self._db_connect()) as conn:
                 self._mark_no_replies(conn)
@@ -258,6 +304,10 @@ class DraftFeedbackModule(Module):
 
     # -- owner inspect / revert tools -------------------------------------------
     def tools(self) -> list:
+        """VI: Trả về các công cụ xem/hoàn tác cho chủ sở hữu (status, forget, clear).
+
+        EN: Return the owner inspect/revert tools (status, forget, clear).
+        """
         return [
             ToolSpec(
                 name=INBOX_DRAFT_FEEDBACK_STATUS_SCHEMA["name"],

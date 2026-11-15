@@ -1,4 +1,18 @@
-"""On-demand rollup of *meaningful* unread mail — the agent's "what did I miss".
+"""VI: Tổng hợp theo yêu cầu thư chưa đọc *có ý nghĩa* — "có gì mình đã bỏ lỡ" của agent.
+
+Đây là đôi mắt; Hermes là bộ não (cùng cách chia như soạn thảo: công cụ làm giàu
+dữ liệu, Hermes xếp hạng). Công cụ gán cho mỗi chuỗi chưa đọc danh mục phân loại
+(To Respond / FYI) và trả về một góc nhìn gọn, đa tài khoản, khử trùng lặp theo
+chuỗi, có hàng rào chống injection. Hermes làm phần tổng quan + xếp hạng "điều
+bạn quan tâm" từ ngữ cảnh của chính nó.
+
+Chỉ đọc: nó **không** thực hiện mutation Gmail nào — chỉ ``labels.list`` /
+``messages.list`` / ``messages.get`` — và không bao giờ đánh dấu thư đã đọc.
+
+Mỗi seam (reader, ``classify``, ``now``, ``is_auth_error``) đều được tiêm vào
+để toàn bộ module được unit-test không cần thông tin đăng nhập live.
+
+EN: On-demand rollup of *meaningful* unread mail — the agent's "what did I miss".
 
 This is the eyes; Hermes is the brain (same split as drafting: the tool enriches,
 Hermes ranks). The tool tags each unread thread with its triage category
@@ -99,7 +113,15 @@ def _id_to_category(reader: GmailReader) -> dict[str, str]:
 
 
 def classify_or_none(parsed: dict, *, llm_classify: LlmClassify = llm.classify_json) -> str | None:
-    """Classify an unlabelled message, returning ``None`` on *any* failure.
+    """VI: Phân loại một thư chưa gán nhãn, trả về ``None`` khi *bất kỳ* lỗi nào xảy ra.
+
+    Khác ``classifier.classify`` (trả về "FYI" an toàn khi lỗi — hợp với bộ gán
+    nhãn tự động, sai ở đây), hàm này phân biệt một kết quả phân loại thật với
+    một sự cố: exception, hoặc kết quả không rõ/chỉ-sent, cho ra ``None`` để
+    rollup *bỏ + đếm* nó thay vì âm thầm hiện nó như "FYI". Ngược lại trả về
+    danh mục.
+
+    EN: Classify an unlabelled message, returning ``None`` on *any* failure.
 
     Unlike ``classifier.classify`` (which returns a safe "FYI" on failure — fine
     for the autonomous labeler, wrong here), this distinguishes a real
@@ -327,7 +349,19 @@ def build_rollup(
     classify: Classify,
     is_auth_error: IsAuthError,
 ) -> dict:
-    """Build the full rollup over one-or-more accounts. Pure given its seams.
+    """VI: Dựng rollup đầy đủ trên một hoặc nhiều tài khoản. Thuần với các seam của nó.
+
+    ``accounts`` là ``email -> GmailReader`` (đã phân giải phía trên — một tài
+    khoản không *phân giải* được được truyền vào như một mục lỗi, xem phần nối
+    handler). Với mỗi tài khoản live ta phân trang + lọc + phân loại độc lập;
+    một tài khoản ném lỗi auth trở thành ``error="needs_reconnect"``
+    theo-từng-tài-khoản và **không** làm dừng các tài khoản khác (MAJOR #3).
+
+    Các chuỗi được gộp qua các tài khoản và sắp xếp tất định theo (category
+    sort_order tăng, internal_date giảm, account tăng) để đầu ra ổn định với
+    cùng đầu vào (MINOR #5).
+
+    EN: Build the full rollup over one-or-more accounts. Pure given its seams.
 
     ``accounts`` is ``email -> GmailReader`` (already resolved upstream — an
     account that failed to *resolve* is passed as an error entry, see the handler
@@ -456,7 +490,16 @@ def make_inbox_unread_rollup_handler(
     is_auth_error: IsAuthError,
     now_fn: Callable[[], float] | None = None,
 ):
-    """Build the ``inbox_unread_rollup`` handler.
+    """VI: Dựng handler ``inbox_unread_rollup``.
+
+    ``account_resolver(account_id|None)`` phân giải các hộp thư đích — một dict
+    ``{email: GmailReader}`` thuần, hoặc một envelope
+    ``{"accounts": {email: reader}, "errors": [...]}`` mà ``errors`` của nó (vd.
+    một ``account_id`` tường minh nhưng không rõ với **không** có dự phòng
+    tài-khoản-duy-nhất) được trộn vào ``accounts`` của đầu ra. Handler trả về
+    một **chuỗi** JSON và không bao giờ raise (hợp đồng công cụ Hermes).
+
+    EN: Build the ``inbox_unread_rollup`` handler.
 
     ``account_resolver(account_id|None)`` resolves the target mailboxes — a plain
     ``{email: GmailReader}`` dict, or an envelope

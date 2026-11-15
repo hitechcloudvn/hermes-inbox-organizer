@@ -1,4 +1,21 @@
-"""Backend logic for the Hermes dashboard plugin (UI tab).
+"""VI: Logic backend cho plugin dashboard của Hermes (tab UI).
+
+Giai đoạn 1 chỉ đọc: liệt kê các tài khoản Google đã kết nối. Các hàm *thuần*
+ở đây không phụ thuộc FastAPI và đọc cùng kho token đã mã hóa mà daemon dùng
+(qua :mod:`config`), nên chúng kiểm thử đơn vị mà không cần Hermes, FastAPI hay
+Google thật — giữ nguyên seam "tests chạy không cần Hermes" của dự án.
+
+``dashboard/plugin_api.py`` được chụp (sao chép vào ``$HERMES_HOME/plugins``
+bởi :mod:`dashboard_assets`) là một wrapper mỏng gọi :func:`build_router`.
+FastAPI được import lười bên trong ``build_router`` vì nó đi kèm tiến trình
+dashboard của Hermes gắn router — không đi kèm package này.
+
+LƯU Ý: điều này chạy trong tiến trình *dashboard*, tách khỏi tiến trình gateway
+nơi giữ trạng thái trong bộ nhớ của daemon. Nó chỉ đụng vào trạng thái trên đĩa
+dùng chung (các file token đã mã hóa), nên đọc cross-process là an toàn; các cờ
+chỉ-có-gateway trong bộ nhớ (ví dụ needs-reconnect) cố tình không hiển thị ở đây.
+
+EN: Backend logic for the Hermes dashboard plugin (UI tab).
 
 Phase 1 is read-only: list the connected Google accounts. The *pure* functions
 here take no FastAPI dependency and read the same encrypted token store the
@@ -42,7 +59,13 @@ _CONNECT_INSTRUCTIONS = (
 
 
 def list_accounts() -> list[dict[str, Any]]:
-    """The connected Gmail accounts, as ``[{"email", "scopes"}]`` sorted by email.
+    """VI: Các tài khoản Gmail đã kết nối, dạng ``[{"email", "scopes"}]`` sắp xếp theo email.
+
+    Giải mã từng blob trong thư mục token (tên file là slug mất thông tin, nên
+    địa chỉ thật chỉ lấy được từ token đã giải mã). Thiếu file key → ``[]``;
+    blob không đọc được/hỏng bị bỏ qua (có log), không bao giờ gây chết.
+
+    EN: The connected Gmail accounts, as ``[{"email", "scopes"}]`` sorted by email.
 
     Decrypts each blob in the token dir (the filename is a lossy slug, so the
     real address only comes from the decrypted token). Missing key file → ``[]``;
@@ -72,7 +95,10 @@ def list_accounts() -> list[dict[str, Any]]:
 
 
 def accounts_payload() -> dict[str, Any]:
-    """JSON body for ``GET /api/plugins/inbox_organizer/accounts``."""
+    """VI: Thân JSON cho ``GET /api/plugins/inbox_organizer/accounts``.
+
+    EN: JSON body for ``GET /api/plugins/inbox_organizer/accounts``.
+    """
     accounts = list_accounts()
     return {"accounts": accounts, "count": len(accounts)}
 
@@ -98,9 +124,14 @@ def _save_token(token: Any) -> None:
 def connect_start(
     *, load_client: Callable[..., oauth.OAuthClient] = oauth.load_oauth_client
 ) -> dict[str, Any]:
-    """Begin a connect: build the Google consent URL + stash the PKCE verifier in
+    """VI: Bắt đầu một kết nối: dựng URL đồng thuận của Google + cất PKCE verifier vào
+    state.db (khóa theo một ``state`` khó hiểu). Trả về ``{ok, auth_url, state,
+    instructions}`` hoặc ``{error}``. ``load_client`` là một seam cho tests.
+
+    EN: Begin a connect: build the Google consent URL + stash the PKCE verifier in
     state.db (keyed by an opaque ``state``). Returns ``{ok, auth_url, state,
-    instructions}`` or ``{error}``. ``load_client`` is a seam for tests."""
+    instructions}`` or ``{error}``. ``load_client`` is a seam for tests.
+    """
     cfg = config.get_config()
     try:
         client = load_client(cfg.oauth_client_file)
@@ -130,11 +161,18 @@ def connect_complete(
     load_client: Callable[..., oauth.OAuthClient] = oauth.load_oauth_client,
     exchange: Callable[..., Any] = oauth.exchange_code,
 ) -> dict[str, Any]:
-    """Finish a connect: look up the stashed verifier by ``state``, exchange the
+    """VI: Hoàn tất một kết nối: tra verifier đã cất theo ``state``, đổi ``code`` đã
+    dán lấy refresh token, và lưu tài khoản đã mã hóa. Trả về ``{ok, email}``
+    hoặc ``{error}``. Daemon (tiến trình riêng) đón tài khoản mới ở nhịp
+    reconcile kế tiếp (Giai đoạn 3) hoặc khi khởi động lại. ``load_client`` /
+    ``exchange`` là các seam cho tests (để unit test không bao giờ chạm Google).
+
+    EN: Finish a connect: look up the stashed verifier by ``state``, exchange the
     pasted ``code`` for a refresh token, and persist the encrypted account. Returns
     ``{ok, email}`` or ``{error}``. The daemon (separate process) picks up the new
     account on its next reconcile tick (Phase 3) or on restart. ``load_client`` /
-    ``exchange`` are seams for tests (so unit tests never reach Google)."""
+    ``exchange`` are seams for tests (so unit tests never reach Google).
+    """
     code = (code or "").strip()
     if not code:
         return {"error": "code is required (paste the code from the connect page)"}
@@ -192,11 +230,18 @@ def _account_token_files(email: str) -> list[tuple[str, Any]]:
 def disconnect(
     email: str, *, revoke: Callable[[str], bool] = oauth.revoke_token
 ) -> dict[str, Any]:
-    """Disconnect an account: revoke its refresh token at Google (best effort) +
+    """VI: Ngắt kết nối một tài khoản: thu hồi refresh token của nó tại Google (best
+    effort) + xóa (các) blob đã lưu. Trả về ``{ok, email, revoked, deleted}``
+    hoặc ``{error}``. Xóa MỌI file token của email (xử lý slug trùng). Daemon
+    (tiến trình riêng) loại nó khỏi định tuyến ở nhịp reconcile kế tiếp — phần
+    này chỉ sửa các file token dùng chung. ``revoke`` là một seam cho tests.
+
+    EN: Disconnect an account: revoke its refresh token at Google (best effort) +
     delete the stored blob(s). Returns ``{ok, email, revoked, deleted}`` or
     ``{error}``. Removes ALL token files for the email (handles duplicate slugs).
     The daemon (a separate process) drops it from routing on its next reconcile tick
-    — this only mutates the shared token files. ``revoke`` is a seam for tests."""
+    — this only mutates the shared token files. ``revoke`` is a seam for tests.
+    """
     email = (email or "").strip()
     if not email:
         return {"error": "email is required"}
@@ -223,7 +268,13 @@ def disconnect(
 
 
 def build_router() -> Any:
-    """Wire the pure functions above onto a FastAPI ``APIRouter``.
+    """VI: Gắn các hàm thuần ở trên vào một ``APIRouter`` của FastAPI.
+
+    Import lười: FastAPI sống trong tiến trình dashboard của Hermes tải
+    ``plugin_api.py`` đã chụp, không phải trong runtime deps của package này,
+    nên việc import module này vẫn không cần FastAPI cho unit test.
+
+    EN: Wire the pure functions above onto a FastAPI ``APIRouter``.
 
     Imported lazily: FastAPI lives in the Hermes dashboard process that loads the
     projected ``plugin_api.py``, not in this package's runtime deps, so importing
@@ -235,18 +286,34 @@ def build_router() -> Any:
 
     @router.get("/accounts")
     async def get_accounts() -> dict[str, Any]:  # mounted at /api/plugins/inbox_organizer/accounts
+        """VI: Trả về payload danh sách tài khoản.
+
+        EN: Return the accounts-list payload.
+        """
         return accounts_payload()
 
     @router.post("/connect/start")
     async def post_connect_start() -> dict[str, Any]:
+        """VI: Bắt đầu luồng kết nối và trả về URL đồng thuận.
+
+        EN: Start the connect flow and return the consent URL.
+        """
         return connect_start()
 
     @router.post("/connect/complete")
     async def post_connect_complete(body: dict) -> dict[str, Any]:
+        """VI: Hoàn tất kết nối bằng code + state từ thân request.
+
+        EN: Complete the connect using the code and state from the request body.
+        """
         return connect_complete(code=body.get("code", ""), state=body.get("state", ""))
 
     @router.post("/disconnect")
     async def post_disconnect(body: dict) -> dict[str, Any]:
+        """VI: Ngắt kết nối tài khoản chỉ định trong thân request.
+
+        EN: Disconnect the account named in the request body.
+        """
         return disconnect(email=body.get("email", ""))
 
     return router

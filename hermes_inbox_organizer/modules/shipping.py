@@ -1,4 +1,24 @@
-"""Shipping tracker module (Phase 4) — detect parcels, poll 17track, push updates.
+"""VI: Module theo dõi vận chuyển (Phase 4) — phát hiện bưu kiện, poll 17track, đẩy cập nhật.
+
+Luồng:
+* ``on_inbound`` (observer, offloaded): phát hiện (các) mã vận đơn trong một thư
+  vận chuyển, ghi lại chúng và đăng ký mã mới với 17track (1 quota mỗi mã; bị chặn
+  bởi ``max_active``; quota/lỗi suy biến xuống chỉ-gắn-nhãn, không bao giờ crash).
+* ``periodic`` (job hẹn giờ): poll tập đang hoạt động qua 17track ``gettrackinfo``
+  (theo lô <=40/lệnh — không webhook, không cổng vào công khai) và đẩy một dòng
+  cập nhật cho mỗi thay đổi giai đoạn CÓ Ý NGHĨA (đang vận chuyển → đang giao →
+  đã giao / ngoại lệ). ``last_notified_stage`` chỉ tiến sau khi đẩy thành công,
+  nên một lần thông báo thất bại sẽ bắn lại lần poll sau (B3). Các giai đoạn tận
+  cùng (delivered / exception / expired) loại bưu kiện khỏi tập poll.
+* ``tools`` (theo yêu cầu): ``inbox_track_packages`` liệt kê những gì đang được theo dõi.
+
+Phát hiện là regex tất định ưu-độ-chính-xác (không LLM); chính 17track từ chối
+các mã sai định dạng (bị từ chối = không tốn quota). Client 17track là một seam
+(:class:`~hermes_inbox_organizer.modules.track17.FakeTrack17Client`) nên module
+được unit-test không cần mạng; ``on_inbound``/poll chạy trên worker thread nên
+mỗi cái tự mở một kết nối DB ngắn hạn của riêng nó.
+
+EN: Shipping tracker module (Phase 4) — detect parcels, poll 17track, push updates.
 
 Flow:
 * ``on_inbound`` (observer, offloaded): detect tracking number(s) in a shipping
@@ -81,7 +101,10 @@ def _plausible(num: str) -> bool:
 
 
 def detect_tracking_numbers(parsed: dict) -> list:
-    """Return unique candidate tracking numbers in a shipping email (≤5), or []."""
+    """VI: Trả về các mã vận đơn ứng viên duy nhất trong một thư vận chuyển (≤5), hoặc [].
+
+    EN: Return unique candidate tracking numbers in a shipping email (≤5), or [].
+    """
     subject = (parsed.get("subject") or "")[:_MAX_SUBJECT]
     body = (parsed.get("body") or parsed.get("snippet") or "")[:_MAX_BODY]
     haystack = f"{subject}\n{body}"
@@ -104,6 +127,11 @@ def _format_update(number: str, st: TrackStatus) -> str:
 
 
 class ShippingModule(Module):
+    """VI: Module theo dõi bưu kiện — phát hiện mã vận đơn trong thư đến và đăng ký với 17track.
+
+    EN: Parcel-tracking module — detect tracking numbers in inbound mail and register them with 17track.
+    """
+
     name = "shipping"
 
     def __init__(
@@ -125,10 +153,18 @@ class ShippingModule(Module):
 
     @property
     def enabled(self) -> bool:
+        """VI: Trả về True khi module được bật và có client 17track.
+
+        EN: Return True when the module is enabled and a 17track client is present.
+        """
         return self._enabled
 
     # -- detect + register (observer) -------------------------------------------
     def on_inbound(self, event: InboundEvent) -> None:
+        """VI: Phát hiện mã vận đơn trong thư đến, ghi lại và đăng ký mã mới với 17track.
+
+        EN: Detect tracking numbers in an inbound message, record them, and register new ones with 17track.
+        """
         numbers = detect_tracking_numbers(event.parsed)
         if not numbers:
             return
@@ -165,6 +201,10 @@ class ShippingModule(Module):
 
     # -- poll + notify (periodic) -----------------------------------------------
     def poll_once(self) -> None:
+        """VI: Poll tập bưu kiện đang hoạt động qua 17track và đẩy cập nhật cho các thay đổi giai đoạn.
+
+        EN: Poll the active parcel set via 17track and push updates on stage changes.
+        """
         if self._client is None:
             return
         with contextlib.closing(self._db_connect()) as conn:
@@ -198,6 +238,10 @@ class ShippingModule(Module):
                 db.set_package_notified_stage(conn, account, number, st.stage)
 
     def periodic(self) -> list:
+        """VI: Trả về job poll định kỳ cho các bưu kiện đang theo dõi.
+
+        EN: Return the periodic polling job for tracked parcels.
+        """
         return [
             PeriodicJob(
                 name="shipping-poll", interval_s=self._poll_interval_s, run_once=self.poll_once
@@ -206,6 +250,10 @@ class ShippingModule(Module):
 
     # -- on-demand tool ---------------------------------------------------------
     def tools(self) -> list:
+        """VI: Trả về công cụ ``inbox_track_packages`` liệt kê các bưu kiện đang theo dõi.
+
+        EN: Return the ``inbox_track_packages`` tool listing tracked parcels.
+        """
         return [
             ToolSpec(
                 name=INBOX_TRACK_PACKAGES_SCHEMA["name"],

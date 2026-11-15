@@ -79,7 +79,8 @@ def test_write_config_creates_locked_files(cfg):
     assert cfg.key_file in written
     for path in (cfg.oauth_client_file, cfg.pubsub_config_file, cfg.sa_key_file, cfg.key_file):
         assert os.path.exists(path)
-        assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+        if os.name != "nt":  # POSIX perms (0600) don't exist on Windows
+            assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
     # oauth + pubsub round-trip as JSON
     assert json.load(open(cfg.oauth_client_file))["client_id"].endswith("googleusercontent.com")
     assert json.load(open(cfg.pubsub_config_file))["project"] == "proj-1"

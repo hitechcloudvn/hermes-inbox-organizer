@@ -1,4 +1,12 @@
-"""Drain Gmail history since a cursor → process each new INBOX message.
+"""VI: Rút lịch sử Gmail kể từ một con trỏ → xử lý từng thư INBOX mới.
+
+Một thông báo Pub/Sub chỉ mang historyId mới; các thư thực sự mới đến từ
+history.list kể từ con trỏ đã lưu (có phân trang). Mã 404 nghĩa là con trỏ quá
+cũ → người gọi kích hoạt resync đầy đủ. Các messagesAdded gắn nhãn INBOX được
+chuyển đến process_fn; historyId lớn nhất mới được trả về để tiến con trỏ
+(chỉ sau khi xử lý, để một sự cố crash sẽ rút lại thay vì bỏ sót).
+
+EN: Drain Gmail history since a cursor → process each new INBOX message.
 
 A Pub/Sub notification only carries the new historyId; the actual new messages
 come from history.list since the stored cursor (paginated). A 404 means the
@@ -19,7 +27,10 @@ MAX_PAGES = 25
 
 
 class StaleCursor(Exception):
-    """history.list returned 404 — stored cursor too old; full resync needed."""
+    """VI: history.list trả về 404 — con trỏ đã lưu quá cũ; cần resync đầy đủ.
+
+    EN: history.list returned 404 — stored cursor too old; full resync needed.
+    """
 
 
 def _is_404(err: Exception) -> bool:
@@ -35,8 +46,12 @@ def drain_history(
     process_fn: Callable[[str], Any],
     sent_fn: Callable[[str], Any] | None = None,
 ) -> str:
-    """Triage new INBOX messages (process_fn) + new SENT messages (sent_fn) since
-    start_history_id; return the new cursor."""
+    """VI: Phân loại các thư INBOX mới (process_fn) + các thư ĐÃ GỬI mới (sent_fn) kể từ
+    start_history_id; trả về con trỏ mới.
+
+    EN: Triage new INBOX messages (process_fn) + new SENT messages (sent_fn) since
+    start_history_id; return the new cursor.
+    """
     inbox_ids: list[str] = []
     sent_ids: list[str] = []
     max_hid = start_history_id

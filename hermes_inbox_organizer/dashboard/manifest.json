@@ -1,9 +1,9 @@
 {
   "name": "inbox_organizer",
   "label": "Inbox Organizer",
-  "description": "Connect and manage the Google accounts triaged by the Inbox Organizer plugin.",
+  "description": "Connect and manage the Google accounts triaged by the Inbox Organizer plugin. / Kết nối và quản lý các tài khoản Google được plugin Inbox Organizer phân loại.",
   "icon": "MessageSquare",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "tab": {
     "path": "/inbox-organizer",
     "position": "end"

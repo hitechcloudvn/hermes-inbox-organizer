@@ -1,4 +1,24 @@
-"""Project the bundled dashboard plugin into ``$HERMES_HOME`` so the Hermes web
+"""VI: Chụp plugin dashboard đóng gói vào ``$HERMES_HOME`` để web dashboard của
+Hermes tìm thấy tab Inbox Organizer + các backend route của nó.
+
+Các plugin dashboard của Hermes được *khám phá theo thư mục* — dashboard quét
+``$HERMES_HOME/plugins/<name>/dashboard/manifest.json`` và không có hook
+entry-point (khác với plugin CLI/gateway mà chúng ta ship qua
+``hermes_agent.plugins``). Vì vậy, với mọi kiểu cài đặt, chúng ta sao chép cây
+``dashboard/`` đóng gói trong package này vào
+``<HERMES_HOME>/plugins/inbox_organizer/dashboard/``:
+
+* pip install  → :func:`register` gọi :func:`project` ở lần tải plugin đầu tiên.
+* baked image  → entrypoint *cũng* chụp nó (ngang hàng với shim plugin.yaml +
+  boot hook), để tab tồn tại trước lượt agent đầu tiên dù volume dữ liệu che
+  khuất các COPY từ image.
+
+Bản sao này là nguồn duy nhất (không lệch): chạy lại sẽ ghi đè các file đã chụp
+từ package. Các backend route được gắn một lần khi dashboard khởi động, nên
+``plugin_api.py`` mới chụp cần khởi động lại dashboard (hoặc
+``/api/dashboard/plugins/rescan`` cho tab front-end) để có hiệu lực.
+
+EN: Project the bundled dashboard plugin into ``$HERMES_HOME`` so the Hermes web
 dashboard discovers the Inbox Organizer tab + its backend routes.
 
 Hermes dashboard plugins are *directory-discovered* — the dashboard scans
@@ -34,17 +54,38 @@ PLUGIN_DIR_NAME = "inbox_organizer"
 
 
 def hermes_home() -> str:
-    """Hermes home dir (``$HERMES_HOME`` or ``~/.hermes``) — where it scans plugins."""
+    """VI: Thư mục home của Hermes (``$HERMES_HOME`` hoặc ``~/.hermes``) — nơi quét các plugin.
+
+    EN: Hermes home dir (``$HERMES_HOME`` or ``~/.hermes``) — where it scans plugins.
+    """
     return os.environ.get("HERMES_HOME") or os.path.expanduser("~/.hermes")
 
 
 def packaged_dashboard_dir() -> str:
-    """The ``dashboard/`` tree shipped inside this package (the copy source)."""
+    """VI: Cây ``dashboard/`` kèm theo trong package này (nguồn để sao chép).
+
+    EN: The ``dashboard/`` tree shipped inside this package (the copy source).
+    """
     return os.path.join(os.path.dirname(__file__), "dashboard")
 
 
 def project(home: str | None = None) -> str | None:
-    """Copy the packaged ``dashboard/`` into ``<home>/plugins/inbox_organizer/``.
+    """VI: Sao chép ``dashboard/`` đóng gói vào ``<home>/plugins/inbox_organizer/``.
+
+    Trả về đường dẫn ``dashboard/`` đích, hoặc ``None`` nếu các asset không được
+    sao chép và cũng chưa tồn tại. Idempotent (ghi đè tại chỗ); ``__pycache__``
+    không được sao chép.
+
+    Chịu được volume dữ liệu dùng chung. Trong triển khai container hóa, CẢ tiến
+    trình gateway lẫn tiến trình web-dashboard đều tải plugin này và gọi
+    ``project``, nhưng chúng chạy dưới các user khác nhau: gateway chụp trước bằng
+    root, để lại các file thuộc root (mọi người đọc được); tiến trình dashboard
+    chạy bằng user không phải root và không ghi đè được. Điều đó ổn — nó chỉ cần
+    ĐỌC chúng — nên một lỗi quyền khi các asset đã tồn tại bị hạ xuống log info
+    thay vì traceback đáng sợ (gateway, với tư cách root, làm mới chúng mỗi lần
+    boot).
+
+    EN: Copy the packaged ``dashboard/`` into ``<home>/plugins/inbox_organizer/``.
 
     Returns the destination ``dashboard/`` path, or ``None`` if the assets are
     neither copied nor already present. Idempotent (overwrites in place);
@@ -83,7 +124,10 @@ def project(home: str | None = None) -> str | None:
 # --- `hermes inbox-organizer ...` CLI subcommand (ctx.register_cli_command) ------
 
 def setup_cli(subparser: Any) -> None:
-    """Build the argparse tree for ``hermes inbox-organizer``."""
+    """VI: Dựng cây argparse cho ``hermes inbox-organizer``.
+
+    EN: Build the argparse tree for ``hermes inbox-organizer``.
+    """
     subs = subparser.add_subparsers(dest="inbox_command")
     subs.add_parser("setup", help="Interactive wizard: write the plugin config files + keys")
     subs.add_parser("status", help="Show what's configured and the resulting capabilities")
@@ -95,7 +139,10 @@ def setup_cli(subparser: Any) -> None:
 
 
 def cli_handler(args: Any) -> None:
-    """Handler for ``hermes inbox-organizer <subcommand>``."""
+    """VI: Hàm xử lý cho ``hermes inbox-organizer <subcommand>``.
+
+    EN: Handler for ``hermes inbox-organizer <subcommand>``.
+    """
     cmd = getattr(args, "inbox_command", None)
     if cmd == "setup":
         from .cli import cmd_setup

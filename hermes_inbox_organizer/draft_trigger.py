@@ -1,4 +1,35 @@
-"""Draft trigger — induce a *context-rich* agent turn to compose a reply.
+"""VI: Kích hoạt nháp — tạo ra một lượt agent *giàu ngữ cảnh* để soạn thư trả lời.
+
+Daemon nền phát hiện một thư "Cần trả lời" nhưng KHÔNG tự viết nháp. Toàn bộ ý
+nghĩa của dạng plugin là **Hermes** soạn thảo, dùng ngữ cảnh vault / trí nhớ /
+bản ghi chat của nó — nên daemon nhờ agent làm việc đó, rồi agent gọi
+``inbox_create_draft`` (xem ``inbox_tool``).
+
+ĐÃ ĐỐI CHIẾU với nguồn gateway thật (``gateway/run.py`` trong
+``NousResearch/hermes-agent`` @sha256:b6e41c15…):
+
+- ``GatewayRunner._handle_message(event: MessageEvent)`` (run.py:6755) là điểm
+  vào thư đến. Nó nạp phiên (bản ghi) và chạy một lượt agent.
+- Nó chỉ kích hoạt ``pre_gateway_dispatch`` và xác thực người dùng khi sự kiện
+  KHÔNG phải nội bộ: ``is_internal = bool(getattr(event, "internal", False))``.
+  Bản thân Hermes tiêm các lượt tổng hợp dạng ``MessageEvent(text=…, source=…,
+  internal=True)`` rồi ``await self._handle_message(event)`` (run.py:4587).
+- Vậy **`internal=True` là chốt chặn đệ quy**: lượt được tiêm của chúng ta sẽ
+  không đi ngược vào hook ``pre_gateway_dispatch`` của chính nó. ``source`` nhắm
+  vào phiên trực tiếp của người dùng, thứ mang bản ghi.
+
+Hai trình phân phối triển khai cùng seam ``Dispatcher`` để việc định tuyến của
+daemon kiểm thử được mà không cần agent thật:
+
+1. ``GatewayInjectionDispatcher`` (MẶC ĐỊNH) — ``MessageEvent`` tổng hợp vào
+   ``GatewayRunner`` đã chụp. Nguyên bản nhất; mang theo bản ghi.
+2. ``HttpWakeDispatcher`` (DỰ PHÒNG) — POST tới ``/v1/chat/completions``
+   tương thích OpenAI (như ``hermes-paperclip-bridge`` làm). Quay một agent
+   phía server có vault+trí nhớ nhưng KHÔNG có bản ghi trực tiếp.
+
+Lựa chọn mặc định được thực nghiệm trên một Hermes thật.
+
+EN: Draft trigger — induce a *context-rich* agent turn to compose a reply.
 
 The background daemon detects a "To Respond" message but does NOT write the
 draft itself. The whole point of the plugin form is that **Hermes** drafts,
@@ -54,7 +85,12 @@ DRAFT_TURN_SENTINEL = "[inbox-organizer:autonomous-draft-turn]"
 def build_draft_instruction(
     *, account_id: str, thread_id: str, sender: str, subject: str
 ) -> str:
-    """Minimal wake message (fallback when the rich brief can't be built).
+    """VI: Thông điệp đánh thức tối thiểu (dự phòng khi không dựng được brief giàu ngữ cảnh).
+
+    Mang DRAFT_TURN_SENTINEL + hàng rào nội dung không đáng tin để kể cả đường
+    dẫn dự phòng cũng được nhận diện là lượt nháp và bị hạn chế công cụ.
+
+    EN: Minimal wake message (fallback when the rich brief can't be built).
 
     Carries DRAFT_TURN_SENTINEL + the untrusted-content guardrail so even the
     fallback path is recognized as a draft turn and tool-restricted.
@@ -74,7 +110,13 @@ def build_draft_instruction(
 
 
 def pending_drafts_context(thread_ids: list[str]) -> dict | None:
-    """``pre_llm_call`` hook payload: proactively surface awaiting drafts.
+    """VI: Payload của hook ``pre_llm_call``: chủ động nêu ra các nháp đang chờ.
+
+    Trả về ``{"context": ...}`` (được nối vào thông điệp người dùng của lượt theo
+    hợp đồng hook thật) hoặc ``None`` khi không có gì chờ. Chỉ được dùng nếu đã
+    xác nhận trên một Hermes thật rằng ``pre_llm_call`` thực sự được kích hoạt.
+
+    EN: ``pre_llm_call`` hook payload: proactively surface awaiting drafts.
 
     Returns ``{"context": ...}`` (appended to the turn's user message per the
     real hook contract) or ``None`` when nothing is pending. Only used if
@@ -96,16 +138,33 @@ def pending_drafts_context(thread_ids: list[str]) -> dict | None:
 # ---------------------------------------------------------------------------
 
 class Dispatcher(Protocol):
-    def dispatch(self, instruction: str) -> None: ...
+    """VI: Seam gửi một thông điệp đánh thức tới agent.
+
+    EN: Seam that sends a wake instruction to the agent.
+    """
+
+    def dispatch(self, instruction: str) -> None:
+        """VI: Gửi instruction cho agent.
+
+        EN: Send the instruction to the agent.
+        """
+        ...
 
 
 class FakeDispatcher:
-    """Records dispatches instead of touching a live agent (tests/unconfigured)."""
+    """VI: Ghi lại các lần dispatch thay vì đụng vào agent thật (tests/chưa cấu hình).
+
+    EN: Records dispatches instead of touching a live agent (tests/unconfigured).
+    """
 
     def __init__(self) -> None:
         self.dispatched: list[str] = []
 
     def dispatch(self, instruction: str) -> None:
+        """VI: Nối instruction vào danh sách nội bộ.
+
+        EN: Append the instruction to the internal list.
+        """
         self.dispatched.append(instruction)
 
 
@@ -139,7 +198,14 @@ def _default_run_coro(coro: Awaitable[Any]) -> None:
 
 
 class GatewayInjectionDispatcher:
-    """Inject a synthetic, transcript-aware agent turn (DEFAULT trigger).
+    """VI: Tiêm một lượt agent tổng hợp có nhận thức bản ghi (trigger MẶC ĐỊNH).
+
+    ``get_gateway``/``get_source`` là các getter lười được điền khi plugin chụp
+    ``GatewayRunner`` thật qua hook ``pre_gateway_dispatch`` của nó (mẫu
+    chat-recorder). ``make_event``/``run_coro`` là các seam tiêm được để việc
+    định tuyến kiểm thử đơn vị được mà không cần runtime Hermes.
+
+    EN: Inject a synthetic, transcript-aware agent turn (DEFAULT trigger).
 
     ``get_gateway``/``get_source`` are lazy getters populated when the plugin
     captures the live ``GatewayRunner`` via its ``pre_gateway_dispatch`` hook
@@ -161,6 +227,10 @@ class GatewayInjectionDispatcher:
         self._run_coro = run_coro
 
     def dispatch(self, instruction: str) -> None:
+        """VI: Tiêm instruction dưới dạng MessageEvent nội bộ vào gateway; raise RuntimeError nếu gateway chưa được chụp.
+
+        EN: Inject the instruction as an internal MessageEvent into the gateway; raises RuntimeError if the gateway isn't captured yet.
+        """
         gateway = self._get_gateway()
         source = self._get_source()
         if gateway is None or source is None:
@@ -178,22 +248,45 @@ class GatewayInjectionDispatcher:
 # ---------------------------------------------------------------------------
 
 class MessagePoster(Protocol):
-    def post(self, content: str) -> dict: ...
+    """VI: Seam đăng một thông điệp tới agent qua HTTP.
+
+    EN: Seam that posts a message to the agent over HTTP.
+    """
+
+    def post(self, content: str) -> dict:
+        """VI: Đăng nội dung và trả về phản hồi dạng dict.
+
+        EN: Post the content and return a dict response.
+        """
+        ...
 
 
 class NoopPoster:
-    """Records requests instead of hitting the agent (unconfigured / tests)."""
+    """VI: Ghi lại các request thay vì gọi agent (chưa cấu hình / tests).
+
+    EN: Records requests instead of hitting the agent (unconfigured / tests).
+    """
 
     def __init__(self) -> None:
         self.posted: list[str] = []
 
     def post(self, content: str) -> dict:
+        """VI: Nối nội dung vào danh sách nội bộ và trả về ``{"status": 0, "noop": True}``.
+
+        EN: Append the content to the internal list and return ``{"status": 0, "noop": True}``.
+        """
         self.posted.append(content)
         return {"status": 0, "noop": True}
 
 
 class HttpMessagePoster:
-    """POST to the local Hermes OpenAI-compatible endpoint (e.g. localhost:8642).
+    """VI: POST tới endpoint tương thích OpenAI của Hermes cục bộ (ví dụ localhost:8642).
+
+    Cần một agent đang chạy + ``API_SERVER_KEY`` — chỉ được kiểm trong validate
+    trực tiếp. Dùng ``urllib`` trong stdlib nên đường dẫn này không thêm phụ
+    thuộc runtime.
+
+    EN: POST to the local Hermes OpenAI-compatible endpoint (e.g. localhost:8642).
 
     Needs a running agent + ``API_SERVER_KEY`` — exercised only in live
     validation. Uses stdlib ``urllib`` so this path has no runtime dependency
@@ -207,6 +300,10 @@ class HttpMessagePoster:
         self._timeout = timeout
 
     def post(self, content: str) -> dict:
+        """VI: POST instruction tới ``/v1/chat/completions`` và trả về ``{status, body}``.
+
+        EN: POST the instruction to ``/v1/chat/completions`` and return ``{status, body}``.
+        """
         import json
         import urllib.request
 
@@ -230,17 +327,27 @@ class HttpMessagePoster:
 
 
 class HttpWakeDispatcher:
-    """Fallback dispatcher wrapping a MessagePoster (the /v1/chat/completions path)."""
+    """VI: Dispatcher dự phòng bọc một MessagePoster (đường dẫn /v1/chat/completions).
+
+    EN: Fallback dispatcher wrapping a MessagePoster (the /v1/chat/completions path).
+    """
 
     def __init__(self, poster: MessagePoster) -> None:
         self._poster = poster
 
     def dispatch(self, instruction: str) -> None:
+        """VI: Chuyển instruction cho poster.
+
+        EN: Hand the instruction to the poster.
+        """
         self._poster.post(instruction)
 
 
 class DraftTrigger:
-    """Routes a To-Respond message to a Dispatcher with a composed instruction."""
+    """VI: Định tuyến một thư Cần-trả-lời tới một Dispatcher kèm instruction đã soạn.
+
+    EN: Routes a To-Respond message to a Dispatcher with a composed instruction.
+    """
 
     def __init__(self, dispatcher: Dispatcher) -> None:
         self._dispatcher = dispatcher
@@ -248,6 +355,10 @@ class DraftTrigger:
     def request_draft(
         self, *, account_id: str, thread_id: str, sender: str, subject: str
     ) -> None:
+        """VI: Soạn instruction đánh thức và gửi nó qua dispatcher.
+
+        EN: Compose the wake instruction and send it via the dispatcher.
+        """
         self._dispatcher.dispatch(
             build_draft_instruction(
                 account_id=account_id,
@@ -267,7 +378,18 @@ def wake_draft(
     instruction: str | None = None,
     poster: MessagePoster | None = None,
 ) -> bool:
-    """Autonomous draft trigger: POST a drafting task to the local Hermes api_server.
+    """VI: Trigger nháp tự trị: POST một nhiệm vụ soạn thảo tới api_server Hermes cục bộ.
+
+    Đường dẫn ĐÃ CHỨNG MINH — mọi test nháp trực tiếp đều điều khiển agent kiểu
+    này, và nó im lặng (không làm bẩn chat Matrix). Đọc HERMES_API_URL /
+    API_SERVER_KEY / HERMES_MODEL từ env; ``poster`` tiêm được cho tests.
+
+    ``instruction`` là thông điệp đánh thức dựng sẵn (runtime truyền brief giàu
+    ngữ cảnh từ ``brief.build_draft_brief``). Khi là None, dùng
+    ``build_draft_instruction`` tối thiểu làm dự phòng để các caller trực
+    tiếp/chưa làm giàu vẫn chạy.
+
+    EN: Autonomous draft trigger: POST a drafting task to the local Hermes api_server.
 
     The PROVEN path — every live draft test drove the agent this way, and it's
     silent (no Matrix-chat pollution). Reads HERMES_API_URL / API_SERVER_KEY /

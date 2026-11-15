@@ -1,4 +1,10 @@
-"""Process one new message: classify → apply label → (To Respond) wake to draft.
+"""VI: Xử lý một thư mới: phân loại → gắn nhãn → (To Respond) đánh thức để soạn thảo.
+
+Đây là lõi xử lý từng thư của vòng lặp tự động. Bộ kích hoạt (Pub/Sub pull →
+drainer) nạp các message id vào đây. `classify_fn` và `wake_fn` là các seam để
+có thể unit-test phần điều phối mà không cần LLM hay agent.
+
+EN: Process one new message: classify → apply label → (To Respond) wake to draft.
 
 This is the per-message core of the autonomous loop. The trigger (Pub/Sub pull →
 drainer) feeds message ids here. `classify_fn` and `wake_fn` are seams so the
@@ -33,7 +39,23 @@ def process_message(
     conn: Any | None = None,
     registry: Any | None = None,
 ) -> str:
-    """Returns the bare category name applied to the message.
+    """VI: Trả về tên danh mục được áp dụng cho thư.
+
+    Khi ``conn`` (một kết nối DB) được cung cấp, kết quả phân loại và trạng thái
+    mới nhất của chuỗi được lưu bền vững (``classified_messages`` / ``thread_state``).
+
+    Khi một ``registry`` module được cung cấp, nó điều khiển pha QUYẾT ĐỊNH
+    (``registry.classify`` — override của module, nếu không thì bộ phân loại mặc
+    định) và, SAU khi nhãn được áp dụng + lưu bền vững, pha THÔNG BÁO
+    (``registry.dispatch_inbound`` — các observer, được offload). Với
+    ``registry=None`` hành vi chính xác là đường dẫn cũ (``classify_fn``, không
+    dispatch), nên việc định tuyến được unit-test mà không cần module nào.
+
+    Khi hệ thống nhãn bị tắt (``INBOX_LABELS_ENABLED=0``) phép đột biến nhãn
+    Gmail bị bỏ qua; phân loại, lưu bền vững, dispatch module và bước đánh thức
+    To-Respond vẫn chạy.
+
+    EN: Returns the bare category name applied to the message.
 
     When ``conn`` (a DB connection) is given, the classification and the thread's
     latest state are persisted (``classified_messages`` / ``thread_state``).

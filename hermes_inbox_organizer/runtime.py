@@ -1,4 +1,13 @@
-"""Autonomous runtime: Gmail watch() + Pub/Sub streaming pull → drain → triage.
+"""VI: Runtime tự trị: Gmail watch() + Pub/Sub streaming pull → drain → phân loại.
+
+Nối các thành phần vào vòng lặp live. Khi có thông báo ta drain lịch sử Gmail
+kể từ con trỏ đã lưu, phân loại+gán nhãn mỗi thư INBOX mới, và đánh thức một
+bản nháp cho "To Respond" — rồi mới tiến con trỏ (chỉ sau khi xử lý, để một vụ
+crash drain lại thay vì bỏ sót). Các lời gọi google live (watch,
+SubscriberClient) được import lười; ``handle_notification`` + quản lý con trỏ
+được seamed để test.
+
+EN: Autonomous runtime: Gmail watch() + Pub/Sub streaming pull → drain → triage.
 
 Ties the components into the live loop. On a notification we drain Gmail history
 since the stored cursor, classify+label each new INBOX message, and wake a draft
@@ -47,7 +56,10 @@ DRAFT_RETRY_INTERVAL_S = 5 * 60      # re-scan unfulfilled drafts every 5 min
 
 
 def arm_watch(service: Any, topic: str) -> tuple[str, int]:
-    """Arm Gmail watch on INBOX+SENT → topic; return (start historyId, expiration_ms)."""
+    """VI: Kích hoạt Gmail watch trên INBOX+SENT → topic; trả về (historyId bắt đầu, expiration_ms).
+
+    EN: Arm Gmail watch on INBOX+SENT → topic; return (start historyId, expiration_ms).
+    """
     resp = (
         service.users()
         .watch(userId="me", body={"topicName": topic, "labelIds": ["INBOX", "SENT"]})
@@ -57,11 +69,18 @@ def arm_watch(service: Any, topic: str) -> tuple[str, int]:
 
 
 def should_renew(now_ms: int, expiration_ms: int, buffer_ms: int = RENEWAL_BUFFER_MS) -> bool:
-    """True if the watch is missing/expired or within the renewal buffer of expiry."""
+    """VI: True nếu watch thiếu/hết hạn hoặc nằm trong vùng đệm gia hạn trước khi hết hạn.
+
+    EN: True if the watch is missing/expired or within the renewal buffer of expiry.
+    """
     return expiration_ms <= 0 or now_ms >= (expiration_ms - buffer_ms)
 
 
 def build_subscriber(sa_key_path: str):
+    """VI: Dựng một SubscriberClient của Pub/Sub từ tệp khóa dịch vụ.
+
+    EN: Build a Pub/Sub SubscriberClient from a service-account key file.
+    """
     from google.cloud import pubsub_v1
 
     return pubsub_v1.SubscriberClient.from_service_account_file(sa_key_path)
@@ -86,7 +105,14 @@ def _is_auth_error(exc: Exception) -> bool:
 
 @dataclass
 class Account:
-    """Per-account runtime state.
+    """VI: Trạng thái runtime theo từng tài khoản.
+
+    ``build_service`` tạo một Gmail service tự động làm mới cho *tài khoản này*.
+    Con trỏ lịch sử nằm trong DB khóa theo ``email`` (để các lần drain không bao
+    giờ vượt hộp thư). ``label_ids`` + ``watch_expiration`` được điền bởi
+    :meth:`InboxRuntime.start`.
+
+    EN: Per-account runtime state.
 
     ``build_service`` mints an auto-refreshing Gmail service for *this* account.
     The history cursor lives in the DB keyed by ``email`` (so drains never cross
@@ -101,6 +127,11 @@ class Account:
 
 
 class InboxRuntime:
+    """VI: Vòng lặp triage tự trị: kích hoạt watch, kéo Pub/Sub, drain, và đánh thức bản nháp.
+
+    EN: The autonomous triage loop: arms watches, pulls Pub/Sub, drains, and wakes drafts.
+    """
+
     def __init__(
         self,
         *,
@@ -213,6 +244,10 @@ class InboxRuntime:
             logger.info("inbox runtime: thread %s draft in flight; skipping", tid)
 
     def start(self) -> None:
+        """VI: Kích hoạt watch cho từng tài khoản, đăng ký Pub/Sub và các vòng lặp nền.
+
+        EN: Arm watch per account, subscribe to Pub/Sub, and start the background loops.
+        """
         from .labels_apply import ensure_labels
 
         if not get_config().labels_enabled:
@@ -257,7 +292,13 @@ class InboxRuntime:
         logger.info("inbox runtime: watching %d account(s), pulling %s", len(self._by_email), sub_path)
 
     def add_account(self, account: Account) -> bool:
-        """Hot-add an account to the running runtime (no restart needed).
+        """VI: Hot-add một tài khoản vào runtime đang chạy (không cần khởi động lại).
+
+        Đảm bảo nhãn của nó, kích hoạt watch, gieo con trỏ, và đăng ký nó vào
+        việc định tuyến — subscription dùng chung đã giao thông báo của nó rồi.
+        Idempotent theo email; trả về True nếu được thêm, False nếu đã được quản lý.
+
+        EN: Hot-add an account to the running runtime (no restart needed).
 
         Ensures its labels, arms its watch, seeds its cursor, and registers it for
         routing — the shared subscription already delivers its notifications.
@@ -280,7 +321,12 @@ class InboxRuntime:
         return True
 
     def remove_account(self, email: str) -> bool:
-        """Stop managing an account: drop from routing + best-effort stop its watch.
+        """VI: Ngừng quản lý một tài khoản: bỏ khỏi định tuyến + best-effort dừng watch của nó.
+
+        Idempotent; trả về True nếu nó từng được quản lý. Dùng bởi disconnect và
+        đường auth-failure (token chết không còn nhận được thông báo).
+
+        EN: Stop managing an account: drop from routing + best-effort stop its watch.
 
         Idempotent; returns True if it was managed. Used by disconnect and by the
         auth-failure path (a dead token can no longer receive notifications).
@@ -298,7 +344,24 @@ class InboxRuntime:
         return True
 
     def reconcile_accounts(self) -> None:
-        """Converge the managed account set with the on-disk tokens.
+        """VI: Hội tụ tập tài khoản đang quản lý với các token trên đĩa.
+
+        Cho phép một connect/disconnect từ tiến trình khác (web dashboard chạy
+        trong MỘT tiến trình RIÊNG và chỉ có thể đổi các tệp token dùng chung)
+        có hiệu lực mà không cần khởi động lại. Mỗi chu kỳ:
+
+        * tệp token biến mất    -> ``remove_account`` (đã ngắt ở nơi khác)
+        * email mới              -> ``add_account`` (đã kết nối ở nơi khác)
+        * cùng email, tệp đổi (token mới sau ví dụ hết hạn 7 ngày + kết nối lại)
+          -> thêm lại, để nó sống lại; ``on_account_added`` xóa lời nhắc kết nối
+          lại hướng tới chủ sở hữu.
+
+        Một token có fingerprint không đổi và hiện không được quản lý (kích hoạt
+        thất bại / chết) bị bỏ qua cho tới khi tệp của nó đổi lại — nên token chết
+        nằm trên đĩa không bị kích hoạt lại mỗi chu kỳ. No-op trừ khi các seam
+        được nối (xem ``__init__``).
+
+        EN: Converge the managed account set with the on-disk tokens.
 
         Lets an out-of-process connect/disconnect (the web dashboard runs in a
         SEPARATE process and can only mutate the shared token files) take effect
@@ -484,7 +547,10 @@ class InboxRuntime:
             message.nack()
 
     def handle_notification(self, notif) -> None:
-        """Route to the notified account, drain its history, triage, advance its cursor."""
+        """VI: Định tuyến tới tài khoản được báo, drain lịch sử của nó, phân loại, tiến con trỏ.
+
+        EN: Route to the notified account, drain its history, triage, advance its cursor.
+        """
         account = self._by_email.get(notif.email_address)
         if account is None:
             logger.warning(

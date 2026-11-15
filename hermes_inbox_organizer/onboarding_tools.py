@@ -1,4 +1,16 @@
-"""Conversational account-onboarding tools the agent calls.
+"""VI: Các công cụ onboard tài khoản kiểu hội thoại mà agent gọi.
+
+``inbox_connect_account`` trả về một liên kết đăng nhập Google; người dùng duyệt
+và dán mã từ trang connect; ``inbox_complete_connection`` đổi mã đó (với PKCE
+verifier do máy chủ giữ), lưu token đã mã hóa, và hot-add tài khoản vào runtime
+đang chạy. Việc chặn theo chủ sở hữu được thực thi phía trước trong hook
+``pre_tool_call`` (xem ``__init__``); các handler này giả định người gọi đã được
+ủy quyền và phân giải *sender nào* qua seam ``resolve_sender`` được tiêm vào.
+
+Theo hợp đồng công cụ của Hermes: handler nhận dict ``args`` của LLM và trả về
+một **chuỗi** JSON, không bao giờ raise.
+
+EN: Conversational account-onboarding tools the agent calls.
 
 ``inbox_connect_account`` hands back a Google sign-in link; the user approves and
 pastes the code from the connect page; ``inbox_complete_connection`` exchanges it
@@ -76,7 +88,10 @@ def make_onboarding_tools(
     hot_add: HotAdd,
     exchange: Exchange = oauth.exchange_code,
 ) -> list[tuple[dict, Callable]]:
-    """Build (schema, handler) pairs for the two onboarding tools."""
+    """VI: Dựng các cặp (schema, handler) cho hai công cụ onboard.
+
+    EN: Build (schema, handler) pairs for the two onboarding tools.
+    """
 
     def connect_handler(args: dict, **_kw: Any) -> str:
         sender = resolve_sender()
@@ -149,7 +164,10 @@ def make_disconnect_tool(
     remove_account: Callable[[str], bool],
     revoke: Callable[[str], bool] = oauth.revoke_token,
 ) -> tuple[dict, Callable]:
-    """Build the (schema, handler) for inbox_disconnect_account."""
+    """VI: Dựng (schema, handler) cho inbox_disconnect_account.
+
+    EN: Build the (schema, handler) for inbox_disconnect_account.
+    """
 
     def handler(args: dict, **_kw: Any) -> str:
         a = args or {}

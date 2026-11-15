@@ -1,4 +1,14 @@
-"""Hermes dashboard backend routes for the Inbox Organizer plugin.
+"""VI: Các route backend cho dashboard Hermes của plugin Inbox Organizer.
+
+Cố ý mỏng: logic thật nằm trong package đã cài đặt
+(``hermes_inbox_organizer.dashboard_api``) để nó version và unit-test cùng plugin
+thay vì trôi dạt bên trong bản sao được project này. Hermes gắn ``router`` cấp
+module dưới ``/api/plugins/inbox_organizer/``.
+
+File này được project vào ``$HERMES_HOME/plugins/inbox_organizer/dashboard/``
+từ package — xem ``hermes_inbox_organizer.dashboard_assets``.
+
+EN: Hermes dashboard backend routes for the Inbox Organizer plugin.
 
 Thin on purpose: the real logic lives in the installed package
 (``hermes_inbox_organizer.dashboard_api``) so it versions and unit-tests with the

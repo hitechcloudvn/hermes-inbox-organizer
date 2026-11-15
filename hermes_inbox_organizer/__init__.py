@@ -1,4 +1,22 @@
-"""hermes-inbox-organizer — autonomous Gmail triage as a Hermes plugin.
+"""VI: hermes-inbox-organizer — phân loại Gmail tự động như một Hermes plugin.
+
+Phần kết nối dựa trên Hermes plugin API
+(``NousResearch/hermes-agent`` → ``hermes_cli/plugins.py`` ``PluginContext`` và
+``gateway/run.py``):
+
+  * một công cụ gốc ``inbox_create_draft`` mà agent gọi (``register_tool``)
+  * một hook ``pre_gateway_dispatch`` nắm bắt ``GatewayRunner`` đang chạy một cách
+    lười (để ta có thể tiêm các lượt draft tổng hợp) — theo mẫu chat-recorder
+  * một hook ``pre_llm_call`` chủ động đưa các bản nháp đang chờ ra trước agent
+  * một daemon hộp thư trong tiến trình liên tục (Pub/Sub streaming pull) được
+    khởi động tại đây
+
+Các lời gọi Gmail / Pub/Sub / agent trực tiếp nằm sau các seam (``NullSource``,
+``UnconfiguredWriter``, ``GatewayInjectionDispatcher`` với getter lười) để
+``register(ctx)`` chạy được — và phần định tuyến/kết nối được unit-test — mà không
+cần thông tin xác thực.
+
+EN: hermes-inbox-organizer — autonomous Gmail triage as a Hermes plugin.
 
 Wiring grounded against the Hermes plugin API
 (``NousResearch/hermes-agent`` → ``hermes_cli/plugins.py`` ``PluginContext`` and
@@ -201,7 +219,11 @@ class _AuthContext:
 
 
 def register(ctx: Any) -> InboxDaemon:
-    """Hermes plugin entry point (group ``hermes_agent.plugins``).
+    """VI: Điểm vào của Hermes plugin (group ``hermes_agent.plugins``).
+
+    Trả về :class:`InboxDaemon` đã dựng để kiểm thử/kiểm tra.
+
+    EN: Hermes plugin entry point (group ``hermes_agent.plugins``).
 
     Returns the constructed :class:`InboxDaemon` for tests/inspection.
     """

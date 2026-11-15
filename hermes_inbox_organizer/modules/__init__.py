@@ -1,4 +1,9 @@
-"""Inbox feature modules + the registry that runs them.
+"""VI: Các module tính năng hộp thư + registry chạy chúng.
+
+Xem :mod:`hermes_inbox_organizer.modules.base` để biết hợp đồng module và
+:mod:`hermes_inbox_organizer.modules.registry` để biết cách chúng được lên lịch.
+
+EN: Inbox feature modules + the registry that runs them.
 
 See :mod:`hermes_inbox_organizer.modules.base` for the module contract and
 :mod:`hermes_inbox_organizer.modules.registry` for how they are scheduled.

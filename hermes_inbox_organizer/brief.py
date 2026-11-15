@@ -1,4 +1,18 @@
-"""Compose the context-rich drafting brief handed to the woken agent.
+"""VI: Soạn bản brief giàu ngữ cảnh trao cho agent vừa được đánh thức.
+
+Xây trên đường dẫn đánh thức của Giai đoạn 1: runtime gọi :func:`build_draft_brief`
+trên kết nối DB của nó và truyền kết quả làm lệnh đánh thức (``wake_draft`` quay về
+:func:`draft_trigger.build_draft_instruction` tối giản nếu không có brief).
+
+Brief phô bày những gì CHÚNG TA đã biết — hồ sơ giọng điệu/mối quan hệ của người
+gửi (``sender_profiles``) và tóm tắt thư trước đây với họ — để Hermes soạn bằng
+giọng của chủ sở hữu mà không phải suy luận lại. Người gửi + tiêu đề thô, do kẻ tấn
+công kiểm soát được, được bọc trong các hàng rào ngẫu nhiên (theo lược đồ của
+``classifier.py``) và gắn nhãn UNTRUSTED DATA; agent vẫn tự đọc toàn bộ chuỗi thư
+qua các công cụ hộp thư (Giai đoạn 3 thêm allowlist công cụ ở cấp hook để thực sự
+giới hạn lượt đó).
+
+EN: Compose the context-rich drafting brief handed to the woken agent.
 
 Builds on Phase 1's wake path: the runtime calls :func:`build_draft_brief` on its
 DB connection and passes the result as the wake instruction (``wake_draft`` falls
@@ -36,7 +50,13 @@ def build_draft_brief(
     subject: str,
     research: bool = True,
 ) -> str:
-    """Return the wake instruction for a To-Respond email, enriched from local state.
+    """VI: Trả về lệnh đánh thức cho một email To-Respond, được làm giàu từ trạng thái cục bộ.
+
+    ``research`` (INBOX_DRAFT_RESEARCH) bật/tắt chỉ thị nghiên-cứu-trước. Luôn kèm
+    guardrail bảo mật + DRAFT_TURN_SENTINEL (phần sau cho phép hook pre_tool_call
+    giới hạn bộ công cụ của lượt đó — phần thực thi thực sự).
+
+    EN: Return the wake instruction for a To-Respond email, enriched from local state.
 
     ``research`` (INBOX_DRAFT_RESEARCH) gates the research-first directive. Always
     carries the security guardrail + DRAFT_TURN_SENTINEL (the latter lets the

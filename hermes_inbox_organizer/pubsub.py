@@ -1,4 +1,18 @@
-"""Pub/Sub streaming-pull notification handling.
+"""VI: Xử lý thông báo streaming-pull của Pub/Sub.
+
+Gmail ``watch()`` đăng một JSON base64 ``{"emailAddress", "historyId"}`` lên
+topic. Ta tiêu thụ nó qua **streaming pull** — một kết nối đi ra, nên không có
+webhook / tunnel / OIDC công khai.
+
+Hợp đồng ack: callback phải ghi bền thông báo trong MỘT bước, SAU ĐÓ mới ack.
+Khi ghi thất bại nó nack để Pub/Sub gửi lại (bền trước ack). Một tài khoản lạ
+được ack + audit thay vì nack mãi mãi. Việc duyệt ``history.list`` thực sự do
+một drainer riêng sở hữu, không phải callback của pull.
+
+``decode_gmail_notification`` và ``handle_pubsub_message`` là thuần/seam và được
+unit-test tại đây; chỉ ``PubSubSubscriber.start`` chạm tới google client live.
+
+EN: Pub/Sub streaming-pull notification handling.
 
 Gmail ``watch()`` publishes a base64 JSON ``{"emailAddress", "historyId"}`` to the
 topic. We consume it via **streaming pull** — an outbound connection, so there is
@@ -29,16 +43,30 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class GmailNotification:
+    """VI: Một thông báo Gmail đã giải mã (địa chỉ email + historyId).
+
+    EN: One decoded Gmail notification (email address + historyId).
+    """
     email_address: str
     history_id: int
 
 
 class NotificationDecodeError(ValueError):
+    """VI: Ném ra khi payload thông báo Gmail không thể giải mã.
+
+    EN: Raised when a Gmail notification payload cannot be decoded.
+    """
     pass
 
 
 def decode_gmail_notification(data: str | bytes) -> GmailNotification:
-    """Decode a Gmail Pub/Sub notification into a GmailNotification.
+    """VI: Giải mã một thông báo Pub/Sub của Gmail thành GmailNotification.
+
+    Client streaming-pull giao payload đã giải mã ở tầng dây (JSON thô:
+    ``{"emailAddress","historyId"}``); push/wire giao base64(JSON). Xử lý cả hai
+    — phân tích như JSON; nếu thất bại, base64-decode rồi phân tích.
+
+    EN: Decode a Gmail Pub/Sub notification into a GmailNotification.
 
     The streaming-pull client delivers the already-wire-decoded payload (raw JSON:
     ``{"emailAddress","historyId"}``); push/wire delivers base64(JSON). Handle
@@ -63,6 +91,10 @@ def decode_gmail_notification(data: str | bytes) -> GmailNotification:
 
 
 class Ack(Enum):
+    """VI: Quyết định ack/nack cho một thông điệp Pub/Sub.
+
+    EN: The ack/nack decision for one Pub/Sub message.
+    """
     ACK = "ack"
     NACK = "nack"
 
@@ -80,7 +112,10 @@ def handle_pubsub_message(
     persist: PersistNotification,
     audit: Audit,
 ) -> Ack:
-    """Decide ack/nack for one Pub/Sub message per the durability contract."""
+    """VI: Quyết định ack/nack cho một thông điệp Pub/Sub theo hợp đồng bền vững.
+
+    EN: Decide ack/nack for one Pub/Sub message per the durability contract.
+    """
     try:
         notif = decode_gmail_notification(data_b64)
     except NotificationDecodeError:
@@ -105,7 +140,10 @@ def handle_pubsub_message(
 
 
 class PubSubSubscriber:
-    """Live streaming-pull wiring. Not exercised by unit tests (needs GCP)."""
+    """VI: Kết nối streaming-pull live. Không được unit-test (cần GCP).
+
+    EN: Live streaming-pull wiring. Not exercised by unit tests (needs GCP).
+    """
 
     def __init__(
         self,
@@ -124,6 +162,10 @@ class PubSubSubscriber:
         self._future = None
 
     def start(self) -> None:
+        """VI: Bắt đầu streaming pull cho subscription và gắn callback ack/nack.
+
+        EN: Start the streaming pull on the subscription and wire the ack/nack callback.
+        """
         from google.cloud import pubsub_v1  # lazy: no dep needed for unit tests
 
         subscriber = pubsub_v1.SubscriberClient()
@@ -145,6 +187,10 @@ class PubSubSubscriber:
         logger.info("pubsub streaming pull started on %s", path)
 
     def stop(self) -> None:
+        """VI: Hủy future streaming-pull nếu đang chạy.
+
+        EN: Cancel the streaming-pull future if one is running.
+        """
         if self._future is not None:
             self._future.cancel()
             self._future = None

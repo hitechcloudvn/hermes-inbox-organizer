@@ -1,4 +1,14 @@
-"""Move a thread when the user SENDS: Actioned or Awaiting Reply.
+"""VI: Di chuyển một chuỗi khi người dùng GỬI: Actioned hoặc Awaiting Reply.
+
+Khi có thư SENT ta hỏi: giờ bạn có đang chờ người kia không? Bạn chỉ
+*Actioned* khi đã đóng một chuỗi bị gắn cờ ("1: To Respond") bằng một câu trả
+lời kết thúc không còn yêu cầu mở nào (vd. "Cảm ơn, đã nhận"). Trong mọi trường
+hợp khác — thư của bạn đặt câu hỏi/đưa yêu cầu, hoặc là một thư gửi mới — bạn
+ở trạng thái *Awaiting Reply*. Trả lời luôn xóa cờ "To Respond" vào (bạn không
+còn nợ *họ* một phản hồi). Cả hai nhãn đều lưu trữ (skip inbox); áp dụng ở cấp
+chuỗi.
+
+EN: Move a thread when the user SENDS: Actioned or Awaiting Reply.
 
 On a SENT message we ask: are you now waiting on the other person? You're
 *Actioned* only when you closed out a flagged thread ("1: To Respond") with a
@@ -60,7 +70,12 @@ def _new_text(body: str) -> str:
 
 
 def sent_awaits_reply(body: str) -> bool:
-    """True if your just-sent message has an open question/request (you await a reply).
+    """VI: True nếu thư vừa gửi của bạn còn câu hỏi/yêu cầu mở (bạn đang chờ trả lời).
+
+    Heuristic văn bản rẻ trên phần không được trích dẫn: một "?" hoặc một dấu
+    hiệu yêu cầu. Khi mơ hồ, nghiêng về Awaiting Reply (hướng an toàn, hữu hình).
+
+    EN: True if your just-sent message has an open question/request (you await a reply).
 
     Cheap text heuristic over the non-quoted portion: a "?" or a request cue.
     Errs toward Awaiting Reply (the safe, visible direction) on ambiguity.
@@ -80,7 +95,17 @@ def handle_sent(
     label_ids: dict[str, str],
     registry: Any = None,
 ) -> str:
-    """Returns the bare category applied to the thread ("Actioned"/"Awaiting Reply").
+    """VI: Trả về danh mục được áp cho chuỗi ("Actioned"/"Awaiting Reply").
+
+    Khi có ``registry`` module, kích hoạt ``registry.dispatch_sent`` (observer
+    được offload) sau khi chuỗi được di chuyển. ``registry=None`` giữ hành vi cũ
+    để việc định tuyến được unit-test không cần module.
+
+    Khi hệ thống nhãn bị tắt (``INBOX_LABELS_ENABLED=0``) việc di chuyển chuỗi bị
+    bỏ qua, nhưng SentEvent (mang đích đã tính) vẫn được dispatch để observer —
+    vd. vòng phản hồi bản nháp — tiếp tục học từ thư đã gửi.
+
+    EN: Returns the bare category applied to the thread ("Actioned"/"Awaiting Reply").
 
     When a module ``registry`` is given, fires ``registry.dispatch_sent`` (offloaded
     observers) after the thread is moved. ``registry=None`` preserves the legacy

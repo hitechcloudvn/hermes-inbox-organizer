@@ -1,4 +1,31 @@
-"""Dashboard-visibility shim for hermes-inbox-organizer.
+"""VI: Shim hiển thị trên dashboard cho hermes-inbox-organizer.
+
+Plugin thật được nạp qua entry-point ``hermes_agent.plugins``
+(``inbox_organizer = "hermes_inbox_organizer"`` trong ``pyproject.toml``). Tuy
+nhiên, dashboard web của Hermes chỉ liệt kê các plugin mà nó tìm thấy dưới dạng
+*thư mục* trong ``$HERMES_HOME/plugins`` — bước quét ``_discover_all_plugins``
+(``hermes_cli/plugins_cmd.py``) không bao giờ liệt kê entry-point — nên plugin
+vẫn chạy tốt nhưng vô hình trên trang Plugins. Thư mục này tồn tại thuần túy để
+bước quét đó tìm thấy một ``plugin.yaml`` (với ``name: inbox_organizer``) và
+render một dòng.
+
+Module này bình thường không bao giờ được import. Khóa dedup của một plugin phẳng
+là ``name`` trong manifest (``plugins.py:_parse_manifest``), nên thư mục này và
+entry-point dùng chung khóa ``inbox_organizer``; trình nạp thật áp dụng nguồn
+entry-point sau cùng, nên nó thắng dedup và import package đã cài đặt — chứ
+không phải file này. Việc re-export dưới đây chỉ là bảo hiểm: nếu một Hermes
+tương lai từng nạp thư mục thay vì entry-point, ``register`` vẫn phân giải về
+cài đặt thật, nên luôn có đúng một ``register()`` theo cả hai cách (và không
+bao giờ lỗi tải "no register() function").
+
+Triển khai: thư mục này được nướng vào image và project vào volume ``/opt/data``
+bởi entrypoint khi boot (volume che khuất các COPY của image, giống hệt hook boot
+gateway:startup). File ``plugin.yaml`` nằm cạnh file này lúc runtime được sao
+chép từ package *đã cài đặt*, nên name/version/description/provides_tools của
+dòng không bao giờ lệch khỏi plugin thật. Xem ``hermes-template/scripts/entrypoint.sh``
+và ``Dockerfile.hermes``.
+
+EN: Dashboard-visibility shim for hermes-inbox-organizer.
 
 The real plugin loads via the ``hermes_agent.plugins`` entry-point
 (``inbox_organizer = "hermes_inbox_organizer"`` in ``pyproject.toml``). Hermes's

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import os
 import sqlite3
 import threading
 
@@ -117,10 +118,12 @@ def test_config_defaults(monkeypatch) -> None:
     config.reset_config()
     c = config.get_config()
     assert c.data_dir == "/opt/data/inbox-organizer"
-    assert c.db_path == "/opt/data/inbox-organizer/state.db"
-    assert c.key_file == "/opt/data/config/inbox-encryption-key"
-    assert c.token_dir == "/opt/data/inbox-organizer/accounts"
-    assert c.sa_key_file == "/opt/data/config/inbox-pubsub-sa.json"
+    # Derived paths go through os.path.join, so compare against a join to stay
+    # platform-neutral (Windows joins with a backslash).
+    assert c.db_path == os.path.join("/opt/data/inbox-organizer", "state.db")
+    assert c.key_file == os.path.join("/opt/data/config", "inbox-encryption-key")
+    assert c.token_dir == os.path.join("/opt/data/inbox-organizer", "accounts")
+    assert c.sa_key_file == os.path.join("/opt/data/config", "inbox-pubsub-sa.json")
     config.reset_config()
 
 
@@ -130,8 +133,8 @@ def test_config_data_dir_override_moves_db_and_tokens(monkeypatch) -> None:
     monkeypatch.delenv("INBOX_TOKEN_DIR", raising=False)
     config.reset_config()
     c = config.get_config()
-    assert c.db_path == "/tmp/inbox/state.db"
-    assert c.token_dir == "/tmp/inbox/accounts"
+    assert c.db_path == os.path.join("/tmp/inbox", "state.db")
+    assert c.token_dir == os.path.join("/tmp/inbox", "accounts")
     config.reset_config()
 
 

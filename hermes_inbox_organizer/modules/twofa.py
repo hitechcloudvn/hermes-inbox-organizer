@@ -1,4 +1,29 @@
-"""2FA / login-code notifier module (Phase 3).
+"""VI: Module notifier 2FA / mã đăng nhập (Phase 3).
+
+Quan sát thư đến; khi một thư có vẻ là email mã đăng nhập/xác minh, nó trích xuất
+mã và đẩy cho chủ sở hữu ngay qua Notifier, nên mã nằm trong chat mà không cần mở
+email. Được nối như một OBSERVER (không phải ``classify_override``): thư 2FA đã
+được classifier gắn nhãn Notification — giá trị ở đây là cú đẩy, không phải nhãn.
+
+Thế trận bảo mật:
+
+* Phát hiện là **regex tất định (KHÔNG có LLM trong đường dẫn)** trên các mẫu
+  giới hạn độ dài, thời gian tuyến tính — subject/body do kẻ tấn công tạo không
+  thể ReDoS worker (S3).
+* Cú đẩy chỉ chứa mã được trích xuất + *địa chỉ* người gửi trần — không bao giờ
+  tên hiển thị do kẻ tấn công điều khiển hay phần thân xung quanh (S1). Chủ sở
+  hữu được dặn chỉ dùng mã nếu họ vừa đăng nhập.
+* Mã **KHÔNG BAO GIỜ được ghi log hay lưu bền vững**. Khóa dedup theo
+  ``message_id`` (``db.note_once``), không bao giờ theo giá trị mã (S2), nên
+  một lần gửi lại Pub/Sub hay poll reconciler re-drain cùng thư không thể đẩy
+  đôi.
+* Danh sách cho phép người gửi tùy chọn (``INBOX_2FA_SENDER_ALLOWLIST``); rỗng
+  = đẩy tất cả.
+
+``on_inbound`` chạy offloaded trên một worker thread của registry, nên nó mở kết
+nối DB NGẮN HẠN của RIÊNG nó (kết nối của drain là single-threaded).
+
+EN: 2FA / login-code notifier module (Phase 3).
 
 Observes inbound mail; when a message looks like a login/verification-code email
 it extracts the code and pushes it to the owner immediately via the Notifier, so
@@ -66,7 +91,13 @@ _ANGLE_ADDR_RE = re.compile(r"<([^>]+)>")
 
 
 def detect_code(parsed: dict) -> str | None:
-    """Return the login/verification code in this email, or None.
+    """VI: Trả về mã đăng nhập/xác minh trong email này, hoặc None.
+
+    Ưu tiên độ chính xác: yêu cầu mã nằm cạnh một từ gợi ý mã (hoặc là mã Google
+    ``G-`` đặc trưng). Đầu vào bị giới hạn độ dài nên một thư được tạo dựng không
+    thể làm nổ regex.
+
+    EN: Return the login/verification code in this email, or None.
 
     Precision-first: requires the code to sit next to a code cue (or be a
     distinctive Google ``G-`` code). Input is length-bounded so a crafted message
@@ -97,7 +128,10 @@ def _sender_email(from_header: str) -> str:
 
 
 class TwoFactorModule(Module):
-    """Observer that pushes detected login codes to the owner."""
+    """VI: Observer đẩy các mã đăng nhập được phát hiện cho chủ sở hữu.
+
+    EN: Observer that pushes detected login codes to the owner.
+    """
 
     name = "twofa"
 
@@ -116,6 +150,10 @@ class TwoFactorModule(Module):
 
     @property
     def enabled(self) -> bool:
+        """VI: Trả về True khi module được bật qua cờ cấu hình.
+
+        EN: Return True when the module is enabled via the config flag.
+        """
         return self._enabled
 
     def _sender_allowed(self, sender: str) -> bool:
@@ -127,6 +165,10 @@ class TwoFactorModule(Module):
         )
 
     def on_inbound(self, event: InboundEvent) -> None:
+        """VI: Phát hiện mã đăng nhập trong thư đến và đẩy nó cho chủ sở hữu (có dedup).
+
+        EN: Detect a login code in an inbound message and push it to the owner (deduped).
+        """
         code = detect_code(event.parsed)
         if code is None:
             return

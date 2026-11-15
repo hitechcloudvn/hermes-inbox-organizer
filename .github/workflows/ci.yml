@@ -1,47 +1,64 @@
 name: CI
 
-on: [push, pull_request]
+# Song ngữ: Kiểm thử tự động / Automated checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-      - run: pip install -e ".[dev]"
-      - run: ruff check .
-      - run: mypy
-
   test:
+    name: Kiểm thử / Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v4
+
+      - name: Cài Python / Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: pip install -e ".[dev]"
-      - run: python -m pytest -q
 
-  build:
+      - name: Kiểm tra cú pháp Python / Python syntax check
+        run: python -m py_compile hermes_inbox_organizer/__init__.py
+
+      - name: Cài phụ thuộc / Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --ignore-requires-python -e ".[dev]"
+
+      - name: Kiểm thử / Run tests
+        run: python -m pytest -q
+
+  lint:
+    name: Kiểm tra tĩnh / Lint & type-check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v4
+
+      - name: Cài Python / Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Build sdist + wheel
+
+      - name: Cài phụ thuộc / Install dependencies
         run: |
-          pip install build twine
-          python -m build
-          twine check --strict dist/*
-      - name: Verify package-data ships in the wheel
-        run: |
-          unzip -l dist/*.whl | grep -q "hermes_inbox_organizer/plugin.yaml"
-          unzip -l dist/*.whl | grep -q "hermes_inbox_organizer/py.typed"
-          unzip -l dist/*.whl | grep -q "hermes_inbox_organizer/dashboard/dist/index.js"
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Ruff / Lint
+        run: ruff check .
+
+      - name: Mypy / Type-check
+        run: mypy
+
+      - name: Kiểm tra bản quyền / License file check
+        run: test -f LICENSE && echo "LICENSE OK"

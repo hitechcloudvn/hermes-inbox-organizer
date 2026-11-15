@@ -1,4 +1,13 @@
-"""Minimal OpenAI-compatible LLM client for classification (the cheap local path).
+"""VI: Client LLM tương thích OpenAI tối giản cho phân loại (lối đi cục bộ rẻ tiền).
+
+Mặc định dùng OpenRouter nhưng hoạt động với **bất kỳ endpoint tương thích
+OpenAI nào**: đặt ``INBOX_CLASSIFIER_BASE_URL`` và ``INBOX_CLASSIFIER_API_KEY``
+(khóa dự phòng ``OPENROUTER_API_KEY`` để tương thích ngược). Model mặc định là
+một model nhỏ, rẻ, làm theo chỉ dẫn và có thể ghi đè qua
+``INBOX_CLASSIFIER_MODEL``. Cả ba được phân giải qua :mod:`.config`. SDK
+``openai`` được import lười (lazy) để gói vẫn tải được khi thiếu nó.
+
+EN: Minimal OpenAI-compatible LLM client for classification (the cheap local path).
 
 Defaults to OpenRouter but works with **any OpenAI-compatible endpoint**: set
 ``INBOX_CLASSIFIER_BASE_URL`` and ``INBOX_CLASSIFIER_API_KEY`` (the key falls back
@@ -28,7 +37,10 @@ def _client():
 
 
 def classify_json(system: str, user: str, *, model: str | None = None) -> dict:
-    """Call the model with a JSON-object response format; return the parsed dict."""
+    """VI: Gọi model với định dạng phản hồi JSON-object; trả về dict đã phân tích cú pháp.
+
+    EN: Call the model with a JSON-object response format; return the parsed dict.
+    """
     resp = _client().chat.completions.create(
         model=model or get_config().classifier_model,
         messages=[
@@ -42,7 +54,12 @@ def classify_json(system: str, user: str, *, model: str | None = None) -> dict:
 
 
 def summarize(system: str, user: str, *, model: str | None = None) -> str:
-    """Plain-text completion (mirrors :func:`classify_json` but returns the raw string).
+    """VI: Hoàn tất văn bản thuần (giống :func:`classify_json` nhưng trả về chuỗi gốc).
+
+    Được dùng bởi backfill hồ sơ người gửi để chắt lọc giọng văn của chủ hộp thư
+    từ chính văn bản họ đã gửi. Nhiệt độ 0 để đầu ra ổn định, súc tích.
+
+    EN: Plain-text completion (mirrors :func:`classify_json` but returns the raw string).
 
     Used by the sender-profile backfill to distil the owner's voice from their own
     sent prose. Temperature 0 for stable, terse output.

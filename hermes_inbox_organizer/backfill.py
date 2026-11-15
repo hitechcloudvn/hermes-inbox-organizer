@@ -1,4 +1,18 @@
-"""Seed ``sender_profiles`` from the owner's SENT mail (Phase 2 backfill).
+"""VI: Gieo dữ liệu ``sender_profiles`` từ thư ĐÃ GỬI của chủ sở hữu (backfill Giai đoạn 2).
+
+Xếp hạng những người nhận thường xuyên nhất của chủ sở hữu, lấy mẫu các câu trả lời
+trong quá khứ của chính họ gửi cho từng người (đã lược lịch sử trích dẫn + chữ ký —
+chỉ giữ văn xuôi của chủ sở hữu), rồi hỏi LLM cục bộ để chắt lọc một ghi chú ngắn
+"viết với người này như thế nào". Có giới hạn + idempotent, nên an toàn để tự chạy
+một lần khi khởi động và chạy lại theo yêu cầu.
+
+Các seam (``reader`` / ``summarize_fn`` / ``conn``) giữ cho nó kiểm thử được bằng
+unit test mà không cần Gmail hay LLM. Văn xuôi của chủ sở hữu được bọc hàng rào
+trước khi đưa cho LLM như lớp phòng thủ chiều sâu, vì bộ lược dấu ngoặc kép
+(``sent_handler._new_text``) chỉ ở mức best-effort (nó xử lý dấu ``>``, chữ ký
+``--`` và dòng trích ``On … wrote:``, không phải mọi client).
+
+EN: Seed ``sender_profiles`` from the owner's SENT mail (Phase 2 backfill).
 
 Ranks the owner's most-frequent recipients, samples their own past replies to each
 (quoted history + signatures stripped — only the owner's prose), and asks the local
@@ -83,7 +97,13 @@ def backfill_sender_profiles(
     scan_limit: int = 400,
     force: bool = False,
 ) -> dict:
-    """Profile the owner's top-N sent recipients. Returns ``{profiled, skipped, errors}``.
+    """VI: Xây hồ sơ cho N người nhận thư đã gửi nhiều nhất của chủ sở hữu. Trả về ``{profiled, skipped, errors}``.
+
+    Có giới hạn (``max_senders`` / ``sample_per_sender`` / ``scan_limit``) và
+    idempotent (bỏ qua người gửi đã có hồ sơ trừ khi ``force``). Mỗi người gửi được
+    xử lý cách ly: một lỗi được ghi vào ``errors`` và không bao giờ làm hỏng cả lần chạy.
+
+    EN: Profile the owner's top-N sent recipients. Returns ``{profiled, skipped, errors}``.
 
     Bounded (``max_senders`` / ``sample_per_sender`` / ``scan_limit``) and idempotent
     (skips already-profiled senders unless ``force``). Each sender is isolated: one

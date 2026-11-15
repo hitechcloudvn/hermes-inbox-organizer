@@ -1,4 +1,24 @@
-"""The module registry — runs enabled modules at the right points, safely.
+"""VI: Registry module — chạy các module đã bật tại các điểm thích hợp, an toàn.
+
+Sở hữu danh sách có thứ tự các module đã bật và ba trách nhiệm:
+
+* :meth:`classify` — pha QUYẾT ĐỊNH. Thử ``classify_override`` của từng module
+  theo thứ tự ưu tiên; kết quả không-None đầu tiên phân giải thành một danh mục
+  thực, không-phải-sent sẽ thắng (được kiểm định giống hệt
+  ``classifier.classify``: danh mục không xác định hoặc ``sent_only`` bị từ
+  chối). Nếu không thì dùng lại bộ phân loại mặc định. Chạy dưới khóa runtime,
+  nên nó không bao giờ tự làm I/O — một override của module ném lỗi sẽ bị bắt và
+  bỏ qua.
+* :meth:`dispatch_inbound` / :meth:`dispatch_sent` — pha THÔNG BÁO. Phân tán mỗi
+  sự kiện tới observer của mọi module đã bật, được OFFLOAD sang một thread pool
+  có giới hạn nên một module chậm/chặn không thể làm đình trễ drain (vốn giữ
+  khóa runtime) và một ngoại lệ trong một module được cô lập khỏi các module khác
+  và drain.
+* :meth:`tools` / :meth:`periodic` — tổng hợp các đóng góp của module để nối dây.
+
+Một sự cố của module luôn được ngăn chặn + ghi log, không bao giờ lan vào phân loại.
+
+EN: The module registry — runs enabled modules at the right points, safely.
 
 Owns the ordered list of enabled modules and three responsibilities:
 
@@ -34,7 +54,13 @@ ClassifyFn = Callable[[dict], str]
 
 
 class InlineExecutor:
-    """Runs submitted work synchronously (tests / a deterministic mode).
+    """VI: Chạy công việc được submit đồng bộ (tests / chế độ tất định).
+
+    Phản chiếu phần API ``concurrent.futures.Executor`` mà registry dùng
+    (``submit`` + ``shutdown``) để dispatch quan sát được mà không cần chờ một
+    pool thật.
+
+    EN: Runs submitted work synchronously (tests / a deterministic mode).
 
     Mirrors the slice of the ``concurrent.futures.Executor`` API the registry
     uses (``submit`` + ``shutdown``) so dispatch is observable without waiting on
@@ -42,13 +68,26 @@ class InlineExecutor:
     """
 
     def submit(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> None:
+        """VI: Chạy ngay lập tức hàm được truyền vào với các đối số đã cho.
+
+        EN: Run the given callable immediately with the given arguments.
+        """
         fn(*args, **kwargs)
 
     def shutdown(self, wait: bool = True) -> None:
+        """VI: Không làm gì — InlineExecutor không có tài nguyên để giải phóng.
+
+        EN: No-op — InlineExecutor holds no resources to release.
+        """
         return None
 
 
 class ModuleRegistry:
+    """VI: Chạy các module đã bật tại các điểm thích hợp của luồng email, một cách an toàn.
+
+    EN: Run enabled modules at the right points of the email flow, safely.
+    """
+
     def __init__(
         self,
         modules: list[Module] | None = None,
@@ -67,11 +106,18 @@ class ModuleRegistry:
 
     @property
     def modules(self) -> list[Module]:
+        """VI: Trả về bản sao danh sách các module đã bật, theo thứ tự ưu tiên.
+
+        EN: Return a copy of the enabled module list, in priority order.
+        """
         return list(self._modules)
 
     # -- decision phase ---------------------------------------------------------
     def classify(self, parsed: dict) -> str:
-        """First valid module override (by priority) wins, else the default classifier."""
+        """VI: Override hợp lệ đầu tiên của module (theo ưu tiên) thắng, nếu không dùng bộ phân loại mặc định.
+
+        EN: First valid module override (by priority) wins, else the default classifier.
+        """
         for m in self._modules:
             try:
                 cat = m.classify_override(parsed)
@@ -96,10 +142,18 @@ class ModuleRegistry:
 
     # -- notification phase (offloaded) -----------------------------------------
     def dispatch_inbound(self, event: InboundEvent) -> None:
+        """VI: Phân tán một sự kiện thư đến tới observer của mọi module, được offload.
+
+        EN: Fan an inbound event out to every module's observer, offloaded.
+        """
         for m in self._modules:
             self._submit(m, "on_inbound", event)
 
     def dispatch_sent(self, event: SentEvent) -> None:
+        """VI: Phân tán một sự kiện thư đã gửi tới observer của mọi module, được offload.
+
+        EN: Fan a sent event out to every module's observer, offloaded.
+        """
         for m in self._modules:
             self._submit(m, "on_sent", event)
 
@@ -127,6 +181,10 @@ class ModuleRegistry:
 
     # -- contributions ----------------------------------------------------------
     def tools(self) -> list[ToolSpec]:
+        """VI: Tổng hợp các công cụ agent mà mọi module đóng góp.
+
+        EN: Aggregate the agent tools contributed by every module.
+        """
         out: list[ToolSpec] = []
         for m in self._modules:
             try:
@@ -136,6 +194,10 @@ class ModuleRegistry:
         return out
 
     def periodic(self) -> list[PeriodicJob]:
+        """VI: Tổng hợp các job hẹn giờ mà mọi module đóng góp.
+
+        EN: Aggregate the timer jobs contributed by every module.
+        """
         out: list[PeriodicJob] = []
         for m in self._modules:
             try:
@@ -145,6 +207,10 @@ class ModuleRegistry:
         return out
 
     def shutdown(self) -> None:
+        """VI: Đóng thread pool mà không chờ các công việc đang chạy hoàn tất.
+
+        EN: Shut the thread pool down without waiting for in-flight work.
+        """
         self._executor.shutdown(wait=False)
 
 

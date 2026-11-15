@@ -1,4 +1,7 @@
-"""Allow `python -m hermes_inbox_organizer` to run the setup/status CLI."""
+"""VI: Cho phép `python -m hermes_inbox_organizer` chạy CLI thiết lập/trạng thái.
+
+EN: Allow `python -m hermes_inbox_organizer` to run the setup/status CLI.
+"""
 
 import sys
 
