@@ -28,6 +28,7 @@ Chi dung stdlib — khong can package nao them / stdlib only — no extra packag
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sys
@@ -153,8 +154,6 @@ if __name__ == "__main__":
     # Dam bao stdout/stderr la UTF-8 ke ca khi locale la POSIX/ASCII (Docker)
     # / force UTF-8 stdout/stderr even under POSIX/ASCII locales (Docker)
     for stream in (sys.stdout, sys.stderr):
-        try:
+        with contextlib.suppress(AttributeError, OSError):
             stream.reconfigure(encoding="utf-8")
-        except (AttributeError, OSError):
-            pass
     sys.exit(main())
